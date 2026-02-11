@@ -122,7 +122,7 @@ async def start_thread(body: dict, _: None = Depends(require_api_key)):
         thread_manager.create_active_thread(
             user_slack_id, CHANNEL, response["ts"], response["ts"]
         )
-        dispatch_event(
+        await dispatch_event(
             "thread.created",
             {
                 "thread_ts": response["ts"],
@@ -230,7 +230,7 @@ async def send_message(thread_ts: str, body: dict, _: None = Depends(require_api
         thread_manager.store_message_mapping(
             post["ts"], target_user_id, dm_ts, expanded, thread_ts
         )
-        dispatch_event(
+        await dispatch_event(
             "message.staff.new",
             {
                 "thread_ts": thread_ts,

@@ -1,51 +1,53 @@
+"""Webhook dispatching logic"""
+
+import asyncio
 import hashlib
 import hmac
 import json
-import os
-import threading
-import time
-from datetime import datetime, timezone
+from typing import Any
 
-import requests
-from dotenv import load_dotenv
+import httpx
 
-load_dotenv()
-WEBHOOK_URLS = [
-    u.strip() for u in os.getenv("FRAUDPHEUS_WEBHOOK_URLS", "").split(",") if u.strip()
-]
-WEBHOOK_SECRET = os.getenv("FRAUDPHEUS_WEBHOOK_SECRET", "")
-RETRY_DELAY = 5
-MAX_ATTEMPTS = 3
+from src.config import MAX_ATTEMPTS, RETRY_DELAY, WEBHOOK_SECRET, WEBHOOK_URLS
 
 
-def _sign(body_bytes):
-    if not WEBHOOK_SECRET:
-        return ""
+def _sign(body_bytes: bytes) -> str:
     return hmac.new(WEBHOOK_SECRET.encode(), body_bytes, hashlib.sha256).hexdigest()
 
 
-def _deliver(url, body_bytes, headers):
+async def _deliver_async(
+    url: str, body_bytes: bytes, headers: dict[str, str], client: httpx.AsyncClient
+):
     attempt = 0
     while attempt < MAX_ATTEMPTS:
         try:
-            resp = requests.post(url, data=body_bytes, headers=headers, timeout=10)
+            resp = await client.post(url, content=body_bytes, headers=headers)
             if 200 <= resp.status_code < 300:
                 return
+            elif 500 <= resp.status_code < 600:
+                pass  # TODO: log
+            else:
+                return  # TODO: log
         except Exception:
+            # TODO: log
             pass
         attempt += 1
         if attempt < MAX_ATTEMPTS:
-            time.sleep(RETRY_DELAY)
+            await asyncio.sleep(RETRY_DELAY)
 
 
-def dispatch_event(event_type, data):
-    if not WEBHOOK_URLS:
-        return
-    payload = {"event_type": event_type, "data": data}
+async def dispatch_event(event_type: str, data: dict[str, Any]):
+    """Dispatch an event to all configured webhooks asynchronously."""
+    payload: dict[str, Any] = {"event_type": event_type, "data": data}
     body_bytes = json.dumps(payload, separators=(",", ":")).encode()
     signature = _sign(body_bytes)
     headers = {"Content-Type": "application/json", "X-Fraudpheus-Signature": signature}
-    for url in WEBHOOK_URLS:
-        threading.Thread(
-            target=_deliver, args=(url, body_bytes, headers), daemon=True
-        ).start()
+    timeout = httpx.Timeout(10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        await asyncio.gather(
+            *(
+                _deliver_async(url, body_bytes, headers, client)
+                for url in WEBHOOK_URLS
+            ),
+            return_exceptions=True,
+        )

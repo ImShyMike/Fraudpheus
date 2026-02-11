@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import re
@@ -5,7 +6,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-import requests
+import httpx
 from dotenv import load_dotenv
 from pyairtable import Api
 from slack_bolt import App
@@ -14,7 +15,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from src.thread_manager import ThreadManager
-from src.webhooks import dispatch_event
+from src.webhooks import dispatch_event as dispatch_event_async
 from src.macros import expand_macros
 
 load_dotenv()
@@ -40,6 +41,9 @@ TRUST_LABELS = {
     4: "Unknown",
 }
 
+def dispatch_event(event_type, data):
+    asyncio.run(dispatch_event_async(event_type, data))
+
 # ty miguel for code :3
 def get_user_trust_level(slack_id):
     """Get user's trust level from hackatime API"""
@@ -58,13 +62,14 @@ def get_user_trust_level(slack_id):
             LIMIT 1
         """
 
-        response = requests.post(
+        response = httpx.post(
             api_url,
             headers={
                 "authorization": f"Bearer {api_token}",
                 "content-type": "application/json",
             },
             json={"query": query},
+            timeout=10,
         )
 
         if response.status_code == 200:
@@ -1318,7 +1323,7 @@ def download_reupload_files(files, channel, thread_ts=None):
                 continue
 
             headers = {"Authorization": f"Bearer {os.getenv('SLACK_BOT_TOKEN')}"}
-            response = requests.get(file_url, headers=headers)
+            response = httpx.get(file_url, headers=headers, timeout=10)
 
             if response.status_code == 200:
                 upload_params = {
