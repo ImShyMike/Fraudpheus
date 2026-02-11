@@ -24,16 +24,17 @@ async def _deliver_async(
             resp = await client.post(url, content=body_bytes, headers=headers)
             if 200 <= resp.status_code < 300:
                 return
-            elif 500 <= resp.status_code < 600:
-                pass  # TODO: log
-            else:
-                return  # TODO: log
-        except Exception:
-            # TODO: log
-            pass
+            if 500 <= resp.status_code < 600:
+                print(f"Server error {resp.status_code} from {url}, attempt {attempt + 1}")
+                return
+            print(f"Unexpected status code {resp.status_code} from {url}, attempt {attempt + 1}")
+        except Exception: # pylint: disable=broad-except
+            print(f"Error delivering webhook to {url}, attempt {attempt + 1}")
         attempt += 1
         if attempt < MAX_ATTEMPTS:
             await asyncio.sleep(RETRY_DELAY)
+        else:
+            print(f"Failed to deliver webhook to {url} after {MAX_ATTEMPTS} attempts")
 
 
 async def dispatch_event(event_type: str, data: dict[str, Any]):
