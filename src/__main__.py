@@ -1,3 +1,5 @@
+"""Main entry point"""
+
 import asyncio
 import json
 import logging
@@ -9,8 +11,6 @@ from datetime import datetime, timezone
 from typing import Any, Optional, TypedDict
 
 import httpx
-from pyairtable import Api
-from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -24,7 +24,7 @@ from src.config import (
     slack_client,
     slack_user_client,
 )
-from src.macros import expand_macros
+from src.macros import MACROS, expand_macros
 from src.thread_manager import ThreadManager
 from src.webhooks import dispatch_event as dispatch_event_async
 
@@ -412,35 +412,50 @@ def get_user_info(user_id: str) -> Optional[UserInfo]:
         return None
 
 
-def post_message_to_channel(user_id, message_text, user_info, files=None):
+def _get_author_name(user_id: str) -> str:
+    """Get author name for event dispatch, falling back to 'Unknown'"""
+    info = get_user_info(user_id)
+    return info["name"] if info else "Unknown"
+
+
+def post_message_to_channel(
+    user_id: str,
+    message_text: str,
+    user_info: UserInfo,
+    files: Optional[list[dict[str, Any]]] = None,
+) -> Optional[bool]:
     """Post user's message to the given channel, either as new message or new reply"""
-    # Slack is kinda weird and must have message text even when only file is shared
     if not message_text or message_text.strip() == "":
         return None
 
-    file_yes = False
-    if message_text == "[Shared a file]":
-        file_yes = True
+    file_yes = message_text == "[Shared a file]"
     if thread_manager.has_active_thread(user_id):
         thread_info = thread_manager.get_active_thread(user_id)
+        if not thread_info:
+            print(f"Could not retrieve thread info for user {user_id}")
+            return False
+        thread_ts = thread_info.get("thread_ts")
+        if not thread_ts:
+            print(f"Could not retrieve thread ts for user {user_id}")
+            return False
 
         try:
-            response = slack_client.chat_postMessage(
+            response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
-                thread_ts=thread_info["thread_ts"],
+                thread_ts=thread_ts,
                 text=f"{message_text}",
                 username=user_info["display_name"],
                 icon_url=user_info["avatar"],
             )
 
             if file_yes and files:
-                download_reupload_files(files, CHANNEL, thread_info["thread_ts"])
+                download_reupload_files(files, CHANNEL, thread_ts)
 
             thread_manager.update_thread_activity(user_id)
             dispatch_event(
                 "message.user.new",
                 {
-                    "thread_ts": thread_info["thread_ts"],
+                    "thread_ts": thread_ts,
                     "message": {
                         "id": response["ts"],
                         "content": message_text,
@@ -462,10 +477,15 @@ def post_message_to_channel(user_id, message_text, user_info, files=None):
         return create_new_thread(user_id, message_text, user_info)
 
 
-def create_new_thread(user_id, message_text, user_info, files=None):
+def create_new_thread(
+    user_id: str,
+    message_text: str,
+    user_info: UserInfo,
+    files: Optional[list[dict[str, Any]]] = None,
+) -> bool:
     """Create new thread in the channel"""
     try:
-        response = slack_client.chat_postMessage(
+        response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
             channel=CHANNEL,
             text=f"*{user_id}*:\n{message_text}",
             username=user_info["display_name"],
@@ -485,7 +505,7 @@ def create_new_thread(user_id, message_text, user_info, files=None):
             trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
             past_threads = get_past_threads_info(user_id)
 
-            slack_client.chat_postMessage(
+            slack_client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=response["ts"],
                 text=f"*User Info:*\n{trust_emoji} Trust Level: {trust_label}\n\n{past_threads}",
@@ -517,16 +537,20 @@ def create_new_thread(user_id, message_text, user_info, files=None):
         return False
 
 
-def send_dm_to_user(user_id, reply_text, files=None):
+def send_dm_to_user(
+    user_id: str,
+    reply_text: str,
+    files: Optional[list[dict[str, Any]]] = None,
+) -> Optional[str]:
     """Send a reply back to the user"""
     try:
-        dm_response = slack_client.conversations_open(users=[user_id])
-        dm_channel = dm_response["channel"]["id"]
+        dm_response: dict[str, Any] = slack_client.conversations_open(users=[user_id])  # type: ignore
+        dm_channel: str = dm_response["channel"]["id"]
 
         if files or reply_text == "[Shared file]":
             return None
 
-        response = slack_client.chat_postMessage(
+        response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
             channel=dm_channel,
             text=reply_text,
             username="Fraud Department",
@@ -541,7 +565,7 @@ def send_dm_to_user(user_id, reply_text, files=None):
         return None
 
 
-def extract_user_id(text):
+def extract_user_id(text: str) -> Optional[str]:
     """Extracts user ID from a mention text <@U000000> or from a direct ID"""
     mention_format = re.search(r"<@([A-Z0-9]+)>", text)
     if mention_format:
@@ -554,8 +578,8 @@ def extract_user_id(text):
     return None
 
 
-@slack_app.command("/fdchat")
-def handle_fdchat_cmd(ack, respond, command):
+@slack_app.command("/fdchat")  # type: ignore
+def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
     """Handle conversations started by staff"""
     ack()
     # for the leekers
@@ -563,7 +587,7 @@ def handle_fdchat_cmd(ack, respond, command):
         respond(
             {
                 "response_type": "ephemeral",
-                "text": f"This command can only be used in one place. If you don't know it, don't even try",
+                "text": "This command can only be used in one place. If you don't know it, don't even try",
             }
         )
         return
@@ -579,7 +603,7 @@ def handle_fdchat_cmd(ack, respond, command):
         )
         return
 
-    requester_id = command.get("user_id")
+    requester_id: str = command.get("user_id", "")
 
     parts = command_text.split(" ", 1)
     user_id = parts[0]
@@ -608,10 +632,31 @@ def handle_fdchat_cmd(ack, respond, command):
     if thread_manager.has_active_thread(target_user_id):
         thread_info = thread_manager.get_active_thread(target_user_id)
 
+        if not thread_info:
+            respond(
+                {
+                    "response_type": "ephemeral",
+                    "text": f"Could not retrieve thread info for {target_user_id}",
+                }
+            )
+            return
+
         try:
-            response = slack_client.chat_postMessage(
+            thread_ts_value: Optional[str] = (
+                thread_info.get("thread_ts") if thread_info else None
+            )
+            if not thread_ts_value:
+                respond(
+                    {
+                        "response_type": "ephemeral",
+                        "text": f"Could not retrieve thread ts for {target_user_id}",
+                    }
+                )
+                return
+
+            response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
-                thread_ts=thread_info["thread_ts"],
+                thread_ts=thread_ts_value,
                 text=f"*<@{requester_id}> continued:*\n{staff_message}",
             )
             dm_ts = send_dm_to_user(target_user_id, staff_message)
@@ -620,9 +665,9 @@ def handle_fdchat_cmd(ack, respond, command):
             if dm_ts:
                 expanded_text = expand_macros(staff_message)
                 if expanded_text != staff_message:
-                    slack_client.chat_postMessage(
+                    slack_client.chat_postMessage(  # type: ignore
                         channel=CHANNEL,
-                        thread_ts=thread_info["thread_ts"],
+                        thread_ts=thread_ts_value,
                         text=f"📨 *Sent to user:*\n{expanded_text}",
                         username="Macro Echo",
                         icon_emoji=":outbox_tray:",
@@ -632,12 +677,12 @@ def handle_fdchat_cmd(ack, respond, command):
                     target_user_id,
                     dm_ts,
                     staff_message,
-                    thread_info["thread_ts"],
+                    thread_ts_value,
                 )
                 dispatch_event(
                     "message.staff.new",
                     {
-                        "thread_ts": thread_info["thread_ts"],
+                        "thread_ts": thread_ts_value,
                         "message": {
                             "id": response["ts"],
                             "content": staff_message,
@@ -646,11 +691,7 @@ def handle_fdchat_cmd(ack, respond, command):
                             .isoformat()
                             .replace("+00:00", "Z"),
                             "is_from_user": False,
-                            "author": {
-                                "name": get_user_info(requester_id)["name"]
-                                if requester_id
-                                else "Unknown"
-                            },
+                            "author": {"name": _get_author_name(requester_id)},
                         },
                     },
                 )
@@ -670,13 +711,14 @@ def handle_fdchat_cmd(ack, respond, command):
                     }
                 )
             return
-        except SlackApiError as err:
+        except SlackApiError as err:  # pylint: disable=broad-except
             respond(
                 {
                     "response_type": "ephemeral",
-                    "text": f"Something broke, awesome - couldn't add a message to an existing thread",
+                    "text": "Something broke, awesome - couldn't add a message to an existing thread",
                 }
             )
+            print(f"Error adding message to existing thread: {err}")
             return
     try:  # Try, not trying. It was standing out a lot, I had to fix it a little
         dm_ts = send_dm_to_user(target_user_id, staff_message)
@@ -694,7 +736,7 @@ def handle_fdchat_cmd(ack, respond, command):
             + staff_message
         )
 
-        response = slack_client.chat_postMessage(
+        response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
             channel=CHANNEL,
             text=f"*<@{user_id}> started a message to <@{target_user_id}>:*\n {staff_message}",
             username=user_info["display_name"],
@@ -711,7 +753,7 @@ def handle_fdchat_cmd(ack, respond, command):
         trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
         past_threads = get_past_threads_info(target_user_id)
 
-        slack_client.chat_postMessage(
+        slack_client.chat_postMessage(  # type: ignore
             channel=CHANNEL,
             thread_ts=response["ts"],
             text=f"*User Info:*\n{trust_emoji} Trust Level: {trust_label}\n\n{past_threads}",
@@ -746,18 +788,14 @@ def handle_fdchat_cmd(ack, respond, command):
                     .isoformat()
                     .replace("+00:00", "Z"),
                     "is_from_user": False,
-                    "author": {
-                        "name": get_user_info(requester_id)["name"]
-                        if requester_id
-                        else "Unknown"
-                    },
+                    "author": {"name": _get_author_name(requester_id)},
                 },
             },
         )
 
         expanded_text = expand_macros(staff_message)
         if expanded_text != staff_message:
-            slack_client.chat_postMessage(
+            slack_client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=response["ts"],
                 text=f"📨 *Sent to user:*\n{expanded_text}",
@@ -785,7 +823,12 @@ def handle_fdchat_cmd(ack, respond, command):
         )
 
 
-def handle_dms(user_id, message_text, files, say):
+def handle_dms(
+    user_id: str,
+    message_text: str,
+    files: list[dict[str, Any]],
+    say: Any,
+) -> None:
     """Receive and react to messages sent to the bot"""
     user_info = get_user_info(user_id)
     if not user_info:
@@ -798,14 +841,19 @@ def handle_dms(user_id, message_text, files, say):
         )
 
 
-@slack_app.message("")
-def handle_all_messages(message, say, client, logger):
+@slack_app.message("")  # type: ignore
+def handle_all_messages(
+    message: dict[str, Any],
+    say: Any,
+    client: WebClient,
+    logger: logging.Logger,  # pylint: disable=unused-argument
+) -> None:
     """Handle all messages related to the bot"""
-    user_id = message["user"]
-    message_text = message["text"]
-    channel_type = message.get("channel_type", "")
-    files = message.get("files", [])
-    channel_id = message.get("channel")
+    user_id: str = message["user"]
+    message_text: str = message["text"]
+    channel_type: str = message.get("channel_type", "")
+    files: list[dict[str, Any]] = message.get("files", [])
+    channel_id: Optional[str] = message.get("channel")
 
     print(f"Message received - Channel: {channel_id}, Type: {channel_type}")
 
@@ -823,12 +871,12 @@ def handle_all_messages(message, say, client, logger):
             handle_channel_reply(message, client)
 
 
-def handle_channel_reply(message, client):
+def handle_channel_reply(message: dict[str, Any], client: WebClient) -> None:
     """Handle replies in channel to send them to users"""
-    thread_ts = message["thread_ts"]
-    reply_text = message["text"]
-    files = message.get("files", [])
-    fraud_dept_ts = message["ts"]
+    thread_ts: str = message["thread_ts"]
+    reply_text: str = message["text"]
+    files: list[dict[str, Any]] = message.get("files", [])
+    fraud_dept_ts: str = message["ts"]
 
     if reply_text and reply_text.strip() == "!backup":
         handle_backup_command(message, client)
@@ -857,7 +905,7 @@ def handle_channel_reply(message, client):
     #    return
 
     # Find user's active thread by TS (look in cache -> look at TS)
-    target_user_id = None
+    target_user_id: Optional[str] = None
     for user_id in thread_manager.active_cache:
         thread_info = thread_manager.get_active_thread(user_id)
 
@@ -870,7 +918,7 @@ def handle_channel_reply(message, client):
         dm_ts = send_dm_to_user(target_user_id, reply_text, files)
 
         # Some logging
-        if dm_ts:
+        if dm_ts and thread_ts:
             thread_manager.store_message_mapping(
                 fraud_dept_ts, target_user_id, dm_ts, reply_text, thread_ts
             )
@@ -886,11 +934,7 @@ def handle_channel_reply(message, client):
                         .isoformat()
                         .replace("+00:00", "Z"),
                         "is_from_user": False,
-                        "author": {
-                            "name": get_user_info(message["user"])["name"]
-                            if message.get("user")
-                            else "Unknown"
-                        },
+                        "author": {"name": _get_author_name(message["user"])},
                     },
                 },
             )
@@ -898,7 +942,7 @@ def handle_channel_reply(message, client):
 
             # Only echo if macros were used
             if original_text != reply_text:
-                client.chat_postMessage(
+                client.chat_postMessage(  # type: ignore
                     channel=CHANNEL,
                     thread_ts=thread_ts,
                     text=f"📨 *Sent to user:*\n{reply_text}",
@@ -907,7 +951,7 @@ def handle_channel_reply(message, client):
                 )
 
             try:
-                client.reactions_add(
+                client.reactions_add(  # type: ignore
                     channel=CHANNEL, timestamp=message["ts"], name="done"
                 )
             except SlackApiError as err:
@@ -915,22 +959,22 @@ def handle_channel_reply(message, client):
         else:
             print(f"Failed to send reply to user {target_user_id}")
             try:
-                client.reactions_add(channel=CHANNEL, timestamp=message["ts"], name="x")
+                client.reactions_add(channel=CHANNEL, timestamp=message["ts"], name="x")  # type: ignore
             except SlackApiError as err:
                 print(f"Failed to add X reaction: {err}")
     else:
         print(f"Could not find user for thread {thread_ts}")
 
 
-def handle_bulkresolve_command(message, client):
+def handle_bulkresolve_command(message: dict[str, Any], client: WebClient) -> None:
     """Handle !bulkresolve command to auto-resolve threads inactive for 2+ days"""
     try:
-        thread_ts = message.get("thread_ts")
-        user_id = message.get("user")
+        thread_ts: Optional[str] = message.get("thread_ts")
+        user_id: Optional[str] = message.get("user")
 
         # for the goobers who try to run this elsewhere
         if thread_ts:
-            client.chat_postMessage(
+            client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=thread_ts,
                 text="⚠️ The `!bulkresolve` command can only be used in the main channel, not in threads.",
@@ -938,11 +982,10 @@ def handle_bulkresolve_command(message, client):
             )
             return
 
-        # Get inactive threads (2+ days = 48+ hours)
         inactive_threads = thread_manager.get_inactive_threads(48)
 
         if not inactive_threads:
-            client.chat_postMessage(
+            client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 text="✅ No threads have been inactive for 2+ days. All threads are active!",
                 username="Bulk Resolve Bot",
@@ -951,28 +994,28 @@ def handle_bulkresolve_command(message, client):
 
         initial_message = f"🔄 **Bulk Resolve Started**\n\nFound {len(inactive_threads)} thread(s) inactive for 2+ days.\nResolving threads and notifying users..."
 
-        initial_response = client.chat_postMessage(
+        initial_response: dict[str, Any] = client.chat_postMessage(  # type: ignore
             channel=CHANNEL, text=initial_message, username="Bulk Resolve Bot"
         )
 
-        initial_msg_ts = initial_response["ts"]
+        initial_msg_ts: str = initial_response["ts"]
 
-        # Process in background
-        def run_bulkresolve():
+        def run_bulkresolve() -> None:
             resolved_count = 0
             failed_count = 0
 
             for thread_data in inactive_threads:
-                target_user_id = thread_data["user_id"]
+                target_user_id: str = thread_data["user_id"]
                 thread_info = thread_data["thread_info"]
-                hours_inactive = thread_data["hours_inactive"]
+                hours_inactive: float = thread_data["hours_inactive"]
 
                 try:
-                    dm_response = client.conversations_open(users=[target_user_id])
-                    dm_channel = dm_response["channel"]["id"]
+                    dm_response: dict[str, Any] = client.conversations_open(  # type: ignore
+                        users=[target_user_id]
+                    )
+                    dm_channel: str = dm_response["channel"]["id"]
 
-                    # Use Slack's mrkdwn formatting with small text via context block
-                    client.chat_postMessage(
+                    client.chat_postMessage(  # type: ignore
                         channel=dm_channel,
                         text="Heyo, it looks like this thread has gone quiet!",
                         blocks=[
@@ -997,20 +1040,17 @@ def handle_bulkresolve_command(message, client):
                         icon_emoji=":ban:",
                     )
 
-                    # Complete the thread
                     success = thread_manager.complete_thread(target_user_id)
 
                     if success:
                         resolved_count += 1
-                        # Dispatch event for tracking
                         dispatch_event(
                             "thread.status.changed",
                             {
                                 "thread_ts": thread_info.get("thread_ts"),
                                 "user_slack_id": target_user_id,
                                 "new_status": "completed",
-                                "timestamp": datetime.utcnow()
-                                .replace(tzinfo=timezone.utc)
+                                "timestamp": datetime.now(timezone.utc)
                                 .isoformat()
                                 .replace("+00:00", "Z"),
                                 "reason": "bulk_auto_resolve",
@@ -1022,23 +1062,21 @@ def handle_bulkresolve_command(message, client):
                     else:
                         failed_count += 1
 
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-except
                     print(f"Error resolving thread for {target_user_id}: {e}")
                     failed_count += 1
 
-            # Send completion report
-            report = f"✅ **Bulk Resolve Complete**\n\n"
+            report = "✅ **Bulk Resolve Complete**\n\n"
             report += f"• Resolved: {resolved_count}\n"
             report += f"• Failed: {failed_count}\n"
             report += f"• Total: {len(inactive_threads)}"
 
-            client.chat_postMessage(
+            client.chat_postMessage(  # type: ignore
                 channel=CHANNEL, text=report, username="Bulk Resolve Bot"
             )
 
-            # Add checkmark to initial message
             try:
-                client.reactions_add(
+                client.reactions_add(  # type: ignore
                     channel=CHANNEL, timestamp=initial_msg_ts, name="white_check_mark"
                 )
             except SlackApiError as err:
@@ -1052,54 +1090,54 @@ def handle_bulkresolve_command(message, client):
             f"Bulk resolve command initiated by user {user_id} for {len(inactive_threads)} threads"
         )
 
-    except Exception as err:
+    except Exception as err:  # pylint: disable=broad-except
         print(f"Error in bulkresolve command handler: {err}")
         try:
-            client.chat_postMessage(
+            client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 text=f"❌ **Bulk Resolve Error**\n\nFailed to execute: {str(err)[:200]}",
                 username="Bulk Resolve Bot",
             )
-        except:
+        except Exception:  # pylint: disable=broad-except
             pass
 
 
-def handle_backup_command(message, client):
+def handle_backup_command(message: dict[str, Any], client: WebClient) -> None:
     """Handle !backup command to start fraud case extraction"""
     try:
-        thread_ts = message.get("thread_ts")
-        user_id = message.get("user")
+        thread_ts: Optional[str] = message.get("thread_ts")
+        user_id: Optional[str] = message.get("user")
 
         initial_message = (
             "🔄 **Backup Started**\n\nCreating backup of all thread data..."
         )
 
         if thread_ts:
-            client.chat_postMessage(
+            client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=thread_ts,
                 text=initial_message,
                 username="Backup Bot",
             )
         else:
-            client.chat_postMessage(
+            client.chat_postMessage(  # type: ignore
                 channel=CHANNEL, text=initial_message, username="Backup Bot"
             )
 
-        def run_backup():
+        def run_backup() -> None:
             try:
                 backup_data = create_backup_export()
                 if not backup_data:
                     error_msg = "❌ **Backup Failed**\n\nCould not create export data"
                     if thread_ts:
-                        client.chat_postMessage(
+                        client.chat_postMessage(  # type: ignore
                             channel=CHANNEL,
                             thread_ts=thread_ts,
                             text=error_msg,
                             username="Backup Bot",
                         )
                     else:
-                        client.chat_postMessage(
+                        client.chat_postMessage(  # type: ignore
                             channel=CHANNEL, text=error_msg, username="Backup Bot"
                         )
                     return
@@ -1108,21 +1146,31 @@ def handle_backup_command(message, client):
                 filename = f"fraudpheus_messages_{timestamp}.json"
                 json_content = json.dumps(backup_data, indent=2, ensure_ascii=False)
 
-                success_msg = f"✅ **Message Export Complete!**\n\n**Statistics:**\n• {backup_data['statistics']['total_cases']} fraud cases\n• {backup_data['statistics']['total_messages']} total messages\n• {backup_data['statistics']['total_users']} users"
+                stats = backup_data["statistics"]
+                success_msg = (
+                    (
+                        f"✅ **Message Export Complete!**\n\n**Statistics:**\n"
+                        f"• {stats['total_cases']} fraud cases\n"
+                        f"• {stats['total_messages']} total messages\n"
+                        f"• {stats['total_users']} users"
+                    )
+                    if stats
+                    else "✅ **Message Export Complete!**"
+                )
 
                 if thread_ts:
-                    client.chat_postMessage(
+                    client.chat_postMessage(  # type: ignore
                         channel=CHANNEL,
                         thread_ts=thread_ts,
                         text=success_msg,
                         username="Backup Bot",
                     )
                 else:
-                    client.chat_postMessage(
+                    client.chat_postMessage(  # type: ignore
                         channel=CHANNEL, text=success_msg, username="Backup Bot"
                     )
 
-                client.files_upload_v2(
+                client.files_upload_v2(  # type: ignore
                     channel=CHANNEL,
                     content=json_content.encode("utf-8"),
                     filename=filename,
@@ -1131,19 +1179,19 @@ def handle_backup_command(message, client):
                     thread_ts=thread_ts,
                 )
 
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-except
                 error_msg = (
                     f"❌ **Backup Error**\n\nFailed to run backup: {str(e)[:500]}"
                 )
                 if thread_ts:
-                    client.chat_postMessage(
+                    client.chat_postMessage(  # type: ignore
                         channel=CHANNEL,
                         thread_ts=thread_ts,
                         text=error_msg,
                         username="Backup Bot",
                     )
                 else:
-                    client.chat_postMessage(
+                    client.chat_postMessage(  # type: ignore
                         channel=CHANNEL, text=error_msg, username="Backup Bot"
                     )
 
@@ -1152,36 +1200,33 @@ def handle_backup_command(message, client):
 
         print(f"Backup command initiated by user {user_id}")
 
-    except Exception as err:
+    except Exception as err:  # pylint: disable=broad-except
         print(f"Error in backup command handler: {err}")
 
 
-@slack_app.action("mark_completed")
-def handle_mark_completed(ack, body, client):
+@slack_app.action("mark_completed")  # type: ignore
+def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> None:
     """Complete the thread"""
     ack()
 
-    user_id = body["actions"][0]["value"]
-    messages_ts = body["message"]["ts"]
+    user_id: str = body["actions"][0]["value"]
+    messages_ts: str = body["message"]["ts"]
 
-    # Give a nice checkmark
     try:
-        client.reactions_add(
+        client.reactions_add(  # type: ignore
             channel=CHANNEL, timestamp=messages_ts, name="white_check_mark"
         )
 
         success = thread_manager.complete_thread(user_id)
         if success:
             print(f"Marked thread for user {user_id} as completed")
-            thread_info = thread_manager.get_active_thread(user_id) or {}
             dispatch_event(
                 "thread.status.changed",
                 {
                     "thread_ts": body["message"]["ts"],
                     "user_slack_id": user_id,
                     "new_status": "completed",
-                    "timestamp": datetime.utcnow()
-                    .replace(tzinfo=timezone.utc)
+                    "timestamp": datetime.now(timezone.utc)
                     .isoformat()
                     .replace("+00:00", "Z"),
                 },
@@ -1193,26 +1238,24 @@ def handle_mark_completed(ack, body, client):
         print(f"Error marking thread as completed: {err}")
 
 
-@slack_app.action("delete_thread")
-def handle_delete_thread(ack, body, client):
+@slack_app.action("delete_thread")  # type: ignore
+def handle_delete_thread(ack: Any, body: dict[str, Any], client: WebClient) -> None:
     """Handle deleting thread"""
     ack()
 
-    user_id = body["actions"][0]["value"]
-    message_ts = body["message"]["ts"]
+    user_id: str = body["actions"][0]["value"]
+    message_ts: str = body["message"]["ts"]
 
     try:
-        thread_info = {}
+        thread_info: Any = {}
 
-        # Check if user has an active thread - get its info
         if (
             user_id in thread_manager.active_cache
             and thread_manager.active_cache[user_id]["message_ts"] == message_ts
         ):
             thread_info = thread_manager.active_cache[user_id]
-        # Else, if he has a completed thread - get that info
         elif user_id in thread_manager.completed_cache:
-            for i, thread in enumerate(thread_manager.completed_cache[user_id]):
+            for thread in thread_manager.completed_cache[user_id]:
                 if thread["message_ts"] == message_ts:
                     thread_info = thread
                     break
@@ -1221,13 +1264,12 @@ def handle_delete_thread(ack, body, client):
             print(f"Couldn't find thread info for {user_id} (messages ts {message_ts})")
             return
 
-        thread_ts = thread_info["thread_ts"]
+        thread_ts: Optional[str] = thread_info["thread_ts"]
 
-        # Try deleting
         try:
-            cursor = None
+            cursor: Optional[str] = None
             while True:
-                api_args = {
+                api_args: dict[str, Any] = {
                     "channel": CHANNEL,
                     "ts": thread_ts,
                     "inclusive": True,
@@ -1237,23 +1279,23 @@ def handle_delete_thread(ack, body, client):
                 if cursor:
                     api_args["cursor"] = cursor
 
-                response = client.conversations_replies(**api_args)
-                messages = response["messages"]
+                response: dict[str, Any] = client.conversations_replies(**api_args)  # type: ignore
+                messages: list[dict[str, Any]] = response["messages"]
 
-                for message in messages:
+                for msg in messages:
                     try:
-                        slack_user_client.chat_delete(
-                            channel=CHANNEL, ts=message["ts"], as_user=True
+                        slack_user_client.chat_delete(  # type: ignore
+                            channel=CHANNEL, ts=msg["ts"], as_user=True
                         )
                         time.sleep(0.3)
 
-                    except SlackApiError as err:
+                    except SlackApiError:
                         try:
-                            client.chat_delete(channel=CHANNEL, ts=message["ts"])
+                            client.chat_delete(channel=CHANNEL, ts=msg["ts"])  # type: ignore
                             time.sleep(0.3)
 
-                        except SlackApiError as err:
-                            print(f"Couldn't delete messages {message['ts']}: {err}")
+                        except SlackApiError as delete_err:
+                            print(f"Couldn't delete messages {msg['ts']}: {delete_err}")
                             time.sleep(0.2)
                             continue
 
@@ -1273,18 +1315,19 @@ def handle_delete_thread(ack, body, client):
         print(f"Error deleting thread: {err}")
 
 
-@slack_app.event("file_shared")
-def handle_file_shared(event, client, logger):
+@slack_app.event("file_shared")  # type: ignore
+def handle_file_shared(
+    event: dict[str, Any], client: WebClient, logger: logging.Logger
+) -> None:
     """Handle files being shared"""
     try:
-        file_id = event["file_id"]
-        user_id = event["user_id"]
-        file_info = client.files_info(file=file_id)
-        file_data = file_info["file"]
+        file_id: str = event["file_id"]
+        user_id: str = event["user_id"]
+        file_info: dict[str, Any] = client.files_info(file=file_id)  # type: ignore
+        file_data: dict[str, Any] = file_info["file"]
 
-        channels = file_data.get("channels", [])
-        groups = file_data.get("groups", [])
-        ims = file_data.get("ims", [])
+        groups: list[str] = file_data.get("groups", [])
+        ims: list[str] = file_data.get("ims", [])
 
         if (
             ims
@@ -1300,9 +1343,11 @@ def handle_file_shared(event, client, logger):
 
                 if not success:
                     try:
-                        dm_response = client.conversations_open(users=user_id)
-                        dm_channel = dm_response["channel"]["id"]
-                        client.chat_postMessage(
+                        dm_response: dict[str, Any] = client.conversations_open(  # type: ignore
+                            users=user_id
+                        )
+                        dm_channel: str = dm_response["channel"]["id"]
+                        client.chat_postMessage(  # type: ignore
                             channel=dm_channel,
                             type="ephemeral",
                             username="Fraud Department",
@@ -1318,27 +1363,27 @@ def handle_file_shared(event, client, logger):
             and not file_data.get("initial_comment")
             and file_data.get("comments_count") == 0
         ):
-            # Gosh that took a long time, grabbing the channel shares to get thread_ts, quite creative, eh?
-            thread_ts = file_data.get("shares")["private"][CHANNEL][0]["thread_ts"]
+            shares: dict[str, Any] = file_data.get("shares", {})
+            thread_ts: str = shares["private"][CHANNEL][0]["thread_ts"]
 
-            for user in thread_manager.active_cache:
-                if thread_manager.active_cache[user]["thread_ts"] == thread_ts:
+            for user, thread_info in thread_manager.active_cache.items():
+                if thread_info["thread_ts"] == thread_ts:
                     send_dm_to_user(user, "[Shared file]", [file_data])
 
     except SlackApiError as err:
         logger.error(f"Error handling file_shared event: {err}")
 
 
-def format_file(files):
+def format_file(files: list[dict[str, Any]]) -> str:
     """Format file for a nice view in message"""
     if not files:
         return ""
 
-    file_info = []
+    file_info: list[str] = []
     for file in files:
-        file_type = file.get("mimetype", "unknown")
-        file_name = file.get("name", "unknown file")
-        file_size = file.get("size", 0)
+        file_type: str = file.get("mimetype", "unknown")
+        file_name: str = file.get("name", "unknown file")
+        file_size: int = file.get("size", 0)
 
         if file_size > 1024 * 1024:
             size_str = f"{file_size / (1024 * 1024):.1f}MB"
@@ -1352,12 +1397,18 @@ def format_file(files):
     return "\n" + "\n".join(file_info)
 
 
-def download_reupload_files(files, channel, thread_ts=None):
+def download_reupload_files(
+    files: list[dict[str, Any]],
+    channel: str,
+    thread_ts: Optional[str] = None,
+) -> list[dict[str, Any]]:
     """Download files, then reupload them to the target channel"""
-    reuploaded = []
+    reuploaded: list[dict[str, Any]] = []
     for file in files:
         try:
-            file_url = file.get("url_private_download") or file.get("url_private")
+            file_url: Optional[str] = file.get("url_private_download") or file.get(
+                "url_private"
+            )
             if not file_url:
                 print(
                     f"Can't really download without any url for file {file.get('name', 'unknown')}"
@@ -1368,7 +1419,7 @@ def download_reupload_files(files, channel, thread_ts=None):
             response = httpx.get(file_url, headers=headers, timeout=10)
 
             if response.status_code == 200:
-                upload_params = {
+                upload_params: dict[str, Any] = {
                     "channel": channel,
                     "file": response.content,
                     "filename": file.get("name", "file"),
@@ -1380,23 +1431,25 @@ def download_reupload_files(files, channel, thread_ts=None):
                 if thread_ts:
                     upload_params["thread_ts"] = thread_ts
 
-                upload_response = slack_client.files_upload_v2(**upload_params)
+                upload_response: dict[str, Any] = slack_client.files_upload_v2(  # type: ignore
+                    **upload_params
+                )
 
                 if upload_response.get("ok"):
                     reuploaded.append(upload_response["file"])
                 else:
                     print(f"Failed to reupload file: {upload_response.get('error')}")
 
-        except Exception as err:
-            print(f"Error processing file: {file.get('name', 'unknown'): {err}}")
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error processing file: {file.get('name', 'unknown')}: {err}")
 
     return reuploaded
 
 
-@slack_app.event("message")
-def handle_message_events(body, logger):
+@slack_app.event("message")  # type: ignore
+def handle_message_events(body: dict[str, Any], logger: logging.Logger) -> None:
     """Handle message events including deletions"""
-    event = body.get("event", {})
+    event: dict[str, Any] = body.get("event", {})
 
     if event.get("subtype") == "message_deleted":
         handle_message_deletion(event, logger)
@@ -1404,11 +1457,11 @@ def handle_message_events(body, logger):
         handle_message_changed(event, logger)
 
 
-def handle_message_deletion(event, logger):
+def handle_message_deletion(event: dict[str, Any], logger: logging.Logger) -> None:
     """Handle message deletion events"""
     try:
-        deleted_ts = event.get("deleted_ts")
-        channel = event.get("channel")
+        deleted_ts: Optional[str] = event.get("deleted_ts")
+        channel: Optional[str] = event.get("channel")
 
         if not deleted_ts or not channel:
             return
@@ -1418,32 +1471,34 @@ def handle_message_deletion(event, logger):
         else:
             handle_user_dm_deletion(deleted_ts, channel, logger)
 
-    except Exception as err:
+    except Exception as err:  # pylint: disable=broad-except
         logger.error(f"Error handling message deletion: {err}")
 
 
-def handle_fraud_dept_deletion(deleted_ts, logger):
+def handle_fraud_dept_deletion(deleted_ts: str, logger: logging.Logger) -> None:
     """Handle deletion of messages by fraud dept members"""
     try:
         mapping = thread_manager.get_message_mapping(deleted_ts)
         if not mapping:
             return
 
-        user_id = mapping["user_id"]
-        dm_ts = mapping["dm_ts"]
+        user_id: str = mapping["user_id"]
+        dm_ts: str = mapping["dm_ts"]
 
         try:
-            dm_response = slack_client.conversations_open(users=[user_id])
-            dm_channel = dm_response["channel"]["id"]
+            dm_response: dict[str, Any] = slack_client.conversations_open(  # type: ignore
+                users=[user_id]
+            )
+            dm_channel: str = dm_response["channel"]["id"]
 
             try:
-                slack_user_client.chat_delete(
+                slack_user_client.chat_delete(  # type: ignore
                     channel=dm_channel, ts=dm_ts, as_user=True
                 )
                 print(f"Deleted DM message for user {user_id}")
             except SlackApiError:
                 try:
-                    slack_client.chat_delete(channel=dm_channel, ts=dm_ts)
+                    slack_client.chat_delete(channel=dm_channel, ts=dm_ts)  # type: ignore
                     print(f"Deleted DM message for user {user_id} (as bot)")
                 except SlackApiError as delete_err:
                     print(
@@ -1451,7 +1506,7 @@ def handle_fraud_dept_deletion(deleted_ts, logger):
                     )
 
             mapping = thread_manager.get_message_mapping(deleted_ts)
-            thread_ts = mapping.get("thread_ts") if mapping else None
+            thread_ts: Optional[str] = mapping.get("thread_ts") if mapping else None
             thread_manager.remove_message_mapping(deleted_ts)
             if thread_ts:
                 dispatch_event(
@@ -1462,30 +1517,32 @@ def handle_fraud_dept_deletion(deleted_ts, logger):
         except SlackApiError as err:
             print(f"Error accessing DM channel for user {user_id}: {err}")
 
-    except Exception as err:
+    except Exception as err:  # pylint: disable=broad-except
         logger.error(f"Error in fraud dept deletion handler: {err}")
 
 
-def handle_user_dm_deletion(deleted_ts, dm_channel, logger):
+def handle_user_dm_deletion(  # pylint: disable=unused-argument
+    deleted_ts: str, dm_channel: str, logger: logging.Logger
+) -> None:
     """Handle deletion of messages by users"""
-    pass
 
 
-def handle_message_changed(event, logger):
+def handle_message_changed(event: dict[str, Any], logger: logging.Logger) -> None:
+    """Handle message edit events"""
     try:
-        message = event.get("message", {})
+        message: dict[str, Any] = event.get("message", {})
         edited = message.get("edited")
         if not message or not edited:
             return
-        ts = message.get("ts")
-        channel = event.get("channel")
+        ts: Optional[str] = message.get("ts")
+        channel: Optional[str] = event.get("channel")
         if channel != CHANNEL:
             return
-        mapping = thread_manager.get_message_mapping(ts)
+        mapping = thread_manager.get_message_mapping(ts) if ts else None
         if not mapping:
             return
-        thread_ts = mapping.get("thread_ts")
-        content = message.get("text", "")
+        thread_ts: Optional[str] = mapping.get("thread_ts")
+        content: str = message.get("text", "")
         dispatch_event(
             "message.updated",
             {
@@ -1505,8 +1562,8 @@ def handle_message_changed(event, logger):
         logger.error(f"Error handling message_changed: {err}")
 
 
-@slack_app.error
-def error_handler(error: Any, body: Any, logger: logging.Logger):
+@slack_app.error  # type: ignore
+def error_handler(error: Any, body: Any, logger: logging.Logger) -> None:
     """Global error handler for Slack events"""
     logger.exception(f"Error: {error}")
     logger.info(f"Request body: {body}")
