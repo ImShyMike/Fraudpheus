@@ -38,12 +38,12 @@ if missing_env:
 
 # === Slack configuration ===
 
-app = App(
+slack_app = App(
     token=SLACK_BOT_TOKEN,
     signing_secret=SLACK_SIGNING_SECRET,
 )
-client = WebClient(token=SLACK_BOT_TOKEN)
-user_client = WebClient(token=SLACK_USER_TOKEN)
+slack_client = WebClient(token=SLACK_BOT_TOKEN)
+slack_user_client = WebClient(token=SLACK_USER_TOKEN)
 
 CHANNEL = env["CHANNEL_ID"]
 
@@ -60,3 +60,15 @@ WEBHOOK_URLS = [
 WEBHOOK_SECRET = env["FRAUDPHEUS_WEBHOOK_SECRET"]
 RETRY_DELAY = 5
 MAX_ATTEMPTS = 3
+
+# === Other configuration ===
+
+TRUST_EMOJI = {0: "🔵", 1: "🔴", 2: "🟢", 3: "🟡", 4: "⚠️"}
+
+TRUST_LABELS = {
+    0: "Blue (Normal)",
+    1: "Red (Banned/Convicted)",
+    2: "Green (Trusted)",
+    3: "Yellow (Suspicious)",
+    4: "Unknown",
+}
