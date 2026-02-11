@@ -102,8 +102,10 @@ class BackupExport(TypedDict):
 
 
 def dispatch_event(event_type: str, data: dict[str, Any]):
-    """Dispatch an event to all configured webhooks asynchronously."""
-    asyncio.run(dispatch_event_async(event_type, data))
+    """Dispatch an event to all configured webhooks in a background thread."""
+    def _run():
+        asyncio.run(dispatch_event_async(event_type, data))
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def get_user_trust_level(slack_id: str):
@@ -726,6 +728,7 @@ def handle_dms(
     say: Any,
     client: WebClient,
     channel_id: str,
+    message_ts: str,
 ) -> None:
     """Receive and react to messages sent to the bot"""
     user_info = get_user_info(user_id)
@@ -739,6 +742,8 @@ def handle_dms(
             user=user_id,
             text="An error occurred while processing your message. Please try again later.",
         )
+    else:
+        client.reactions_add(channel=channel_id, timestamp=message_ts, name="white_check_mark")  # type: ignore
 
 
 @slack_app.message("")  # type: ignore
@@ -752,6 +757,7 @@ def handle_all_messages(
     user_id: str = message["user"]
     message_text: str = message["text"]
     channel_type: str = message.get("channel_type", "")
+    message_ts: str = message["ts"]
     files: list[dict[str, Any]] = message.get("files", [])
     channel_id: Optional[str] = message.get("channel")
 
@@ -762,7 +768,7 @@ def handle_all_messages(
 
     if channel_type == "im":
         if channel_id:
-            handle_dms(user_id, message_text, files, say, client, channel_id)
+            handle_dms(user_id, message_text, files, say, client, channel_id, message_ts)
         else:
             print(f"Warning: Received IM message without channel_id for user {user_id}")
     elif channel_id == CHANNEL:

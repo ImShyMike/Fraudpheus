@@ -1,5 +1,6 @@
 """REST API endpoints for Fraudpheus"""
 
+import asyncio
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -162,7 +163,7 @@ async def start_thread(
         thread_manager.create_active_thread(
             user_slack_id, CHANNEL, response["ts"], response["ts"]
         )
-        await dispatch_event(
+        asyncio.create_task(dispatch_event(
             "thread.created",
             {
                 "thread_ts": response["ts"],
@@ -174,7 +175,7 @@ async def start_thread(
                 .replace("+00:00", "Z"),
                 "initial_message": initial_message,
             },
-        )
+        ))
         return {"thread_ts": response["ts"]}
     except SlackApiError as err:
         raise HTTPException(
@@ -296,7 +297,7 @@ async def send_message(
             post["ts"], target_user_id, dm_ts, expanded, thread_ts
         )
         author_name: str = _get_user_name(author_slack_id)
-        await dispatch_event(
+        asyncio.create_task(dispatch_event(
             "message.staff.new",
             {
                 "thread_ts": thread_ts,
@@ -312,7 +313,7 @@ async def send_message(
                     "author": {"name": author_name},
                 },
             },
-        )
+        ))
         return {
             "id": post["ts"],
             "content": content,

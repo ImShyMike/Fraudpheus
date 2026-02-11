@@ -12,20 +12,18 @@ load_dotenv()
 REQUIRED_ENV = (
     "SLACK_BOT_TOKEN",
     "SLACK_SIGNING_SECRET",
-    "SLACK_USER_TOKEN",
     "CHANNEL_ID",
     "AIRTABLE_API_KEY",
     "AIRTABLE_BASE_ID",
-    "FRAUDPHEUS_WEBHOOK_URLS",
     "FRAUDPHEUS_WEBHOOK_SECRET",
     "FRAUDPHEUS_API_KEY",
 )
 
-env: dict[str, str] = {name: str(os.getenv(name)) for name in REQUIRED_ENV}
+env: dict[str, str] = {name: os.getenv(name, "") for name in REQUIRED_ENV}
 
 SLACK_BOT_TOKEN = env["SLACK_BOT_TOKEN"]
 SLACK_SIGNING_SECRET = env["SLACK_SIGNING_SECRET"]
-SLACK_USER_TOKEN = env["SLACK_USER_TOKEN"]
+SLACK_USER_TOKEN = os.getenv("SLACK_USER_TOKEN", "")
 CHANNEL_ID = env["CHANNEL_ID"]
 AIRTABLE_API_KEY = env["AIRTABLE_API_KEY"]
 AIRTABLE_BASE_ID = env["AIRTABLE_BASE_ID"]
@@ -56,7 +54,7 @@ airtable_base = airtable_api.base(AIRTABLE_BASE_ID)
 # === Webhook configuration ===
 
 WEBHOOK_URLS = [
-    u.strip() for u in env["FRAUDPHEUS_WEBHOOK_URLS"].split(",") if u.strip()
+    u.strip() for u in os.getenv("FRAUDPHEUS_WEBHOOK_URLS", "").split(",") if u.strip()
 ]
 WEBHOOK_SECRET = env["FRAUDPHEUS_WEBHOOK_SECRET"]
 RETRY_DELAY = 5
