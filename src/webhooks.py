@@ -1,19 +1,28 @@
-import os, json, hmac, hashlib, threading, time
-import requests
+import hashlib
+import hmac
+import json
+import os
+import threading
+import time
 from datetime import datetime, timezone
+
+import requests
 from dotenv import load_dotenv
 
-load_dotenv();
-
-WEBHOOK_URLS = [u.strip() for u in os.getenv("FRAUDPHEUS_WEBHOOK_URLS", "").split(",") if u.strip()]
+load_dotenv()
+WEBHOOK_URLS = [
+    u.strip() for u in os.getenv("FRAUDPHEUS_WEBHOOK_URLS", "").split(",") if u.strip()
+]
 WEBHOOK_SECRET = os.getenv("FRAUDPHEUS_WEBHOOK_SECRET", "")
 RETRY_DELAY = 5
 MAX_ATTEMPTS = 3
+
 
 def _sign(body_bytes):
     if not WEBHOOK_SECRET:
         return ""
     return hmac.new(WEBHOOK_SECRET.encode(), body_bytes, hashlib.sha256).hexdigest()
+
 
 def _deliver(url, body_bytes, headers):
     attempt = 0
@@ -28,15 +37,15 @@ def _deliver(url, body_bytes, headers):
         if attempt < MAX_ATTEMPTS:
             time.sleep(RETRY_DELAY)
 
+
 def dispatch_event(event_type, data):
     if not WEBHOOK_URLS:
         return
     payload = {"event_type": event_type, "data": data}
     body_bytes = json.dumps(payload, separators=(",", ":")).encode()
     signature = _sign(body_bytes)
-    headers = {
-        "Content-Type": "application/json",
-        "X-Fraudpheus-Signature": signature
-    }
+    headers = {"Content-Type": "application/json", "X-Fraudpheus-Signature": signature}
     for url in WEBHOOK_URLS:
-        threading.Thread(target=_deliver, args=(url, body_bytes, headers), daemon=True).start()
+        threading.Thread(
+            target=_deliver, args=(url, body_bytes, headers), daemon=True
+        ).start()

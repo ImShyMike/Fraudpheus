@@ -29,7 +29,7 @@ class ThreadManager:
                         "channel": fields.get("channel"),
                         "message_ts": fields.get("message_ts"),
                         "record_id": record["id"],
-                        "last_activity": datetime.now()
+                        "last_activity": datetime.now(),
                     }
                     if fields.get("thread_ts"):
                         self._thread_ts_to_user_id[fields.get("thread_ts")] = user_id
@@ -42,16 +42,22 @@ class ThreadManager:
                 if user_id:
                     if user_id not in self._completed_cache:
                         self._completed_cache[user_id] = []
-                    self._completed_cache[user_id].append({
-                        "thread_ts": fields.get("thread_ts"),
-                        "channel": fields.get("channel"),
-                        "message_ts": fields.get("message_ts"),
-                        "record_id": record["id"]
-                    })
+                    self._completed_cache[user_id].append(
+                        {
+                            "thread_ts": fields.get("thread_ts"),
+                            "channel": fields.get("channel"),
+                            "message_ts": fields.get("message_ts"),
+                            "record_id": record["id"],
+                        }
+                    )
                     if fields.get("thread_ts"):
                         self._thread_ts_to_user_id[fields.get("thread_ts")] = user_id
-            completed_threads_count = sum(len(threads) for threads in self._completed_cache.values())
-            print(f"Loaded {len(self._active_cache)} active and {completed_threads_count} completed threads from db")
+            completed_threads_count = sum(
+                len(threads) for threads in self._completed_cache.values()
+            )
+            print(
+                f"Loaded {len(self._active_cache)} active and {completed_threads_count} completed threads from db"
+            )
 
         except Exception as err:
             print(f"Error loading threads from Airtable: {err}")
@@ -64,7 +70,7 @@ class ThreadManager:
 
             if not records:
                 return None
-            
+
             record = records[0]
             fields = record["fields"]
             thread_data = {
@@ -72,14 +78,16 @@ class ThreadManager:
                 "channel": fields.get("channel"),
                 "message_ts": fields.get("message_ts"),
                 "record_id": record["id"],
-                "last_activity": datetime.now()
+                "last_activity": datetime.now(),
             }
-            
+
             self._active_cache[user_id] = thread_data
             if thread_data.get("thread_ts"):
                 self._thread_ts_to_user_id[thread_data["thread_ts"]] = user_id
-            
-            print(f"Cache miss for {user_id}. Fetched and cached active thread from Airtable.")
+
+            print(
+                f"Cache miss for {user_id}. Fetched and cached active thread from Airtable."
+            )
             return thread_data
 
         except Exception as err:
@@ -91,31 +99,33 @@ class ThreadManager:
         thread = self._active_cache.get(user_id)
         if thread:
             return thread
-        
+
         return self._check_airtable_for_user(user_id)
 
     def has_active_thread(self, user_id):
         if user_id in self._active_cache:
             return True
-        
+
         return self._check_airtable_for_user(user_id) is not None
 
     def create_active_thread(self, user_id, channel, thread_ts, message_ts):
         """Create new active thread"""
         try:
-            record = self.active_threads_table.create({
-                "user_id": user_id,
-                "thread_ts": thread_ts,
-                "channel": channel,
-                "message_ts": message_ts,
-            })
+            record = self.active_threads_table.create(
+                {
+                    "user_id": user_id,
+                    "thread_ts": thread_ts,
+                    "channel": channel,
+                    "message_ts": message_ts,
+                }
+            )
 
             self._active_cache[user_id] = {
                 "thread_ts": thread_ts,
                 "channel": channel,
                 "message_ts": message_ts,
                 "record_id": record["id"],
-                "last_activity": datetime.now()
+                "last_activity": datetime.now(),
             }
             self._thread_ts_to_user_id[thread_ts] = user_id
 
@@ -139,9 +149,9 @@ class ThreadManager:
 
         try:
             record_id = self._active_cache[user_id]["record_id"]
-            self.active_threads_table.update(record_id, {
-                "funny_field": current_time.strftime("%m/%d/%Y, %H:%M:%S")
-            })
+            self.active_threads_table.update(
+                record_id, {"funny_field": current_time.strftime("%m/%d/%Y, %H:%M:%S")}
+            )
         except Exception as err:
             print(f"Error updating thread activity ts: {err}")
 
@@ -154,23 +164,27 @@ class ThreadManager:
             active_thread = self._active_cache[user_id]
 
             # Create the record for completed thread, delete the active one
-            completed_record = self.completed_threads_table.create({
-                "user_id": user_id,
-                "thread_ts": active_thread["thread_ts"],
-                "channel": active_thread["channel"],
-                "message_ts": active_thread["message_ts"],
-            })
+            completed_record = self.completed_threads_table.create(
+                {
+                    "user_id": user_id,
+                    "thread_ts": active_thread["thread_ts"],
+                    "channel": active_thread["channel"],
+                    "message_ts": active_thread["message_ts"],
+                }
+            )
             self.active_threads_table.delete(active_thread["record_id"])
 
             # Update cache
             if user_id not in self._completed_cache:
                 self._completed_cache[user_id] = []
-            self._completed_cache[user_id].append({
-                "thread_ts": active_thread["thread_ts"],
-                "channel": active_thread["channel"],
-                "message_ts": active_thread["message_ts"],
-                "record_id": completed_record["id"]
-            })
+            self._completed_cache[user_id].append(
+                {
+                    "thread_ts": active_thread["thread_ts"],
+                    "channel": active_thread["channel"],
+                    "message_ts": active_thread["message_ts"],
+                    "record_id": completed_record["id"],
+                }
+            )
             self._thread_ts_to_user_id[active_thread["thread_ts"]] = user_id
             del self._active_cache[user_id]
 
@@ -189,7 +203,10 @@ class ThreadManager:
         """Delete thread, either active or completed - doesn't matter"""
         try:
             # Try to delete an active thread with this ts if it exists
-            if user_id in self._active_cache and self._active_cache[user_id]["message_ts"] == message_ts:
+            if (
+                user_id in self._active_cache
+                and self._active_cache[user_id]["message_ts"] == message_ts
+            ):
                 record_id = self._active_cache[user_id]["record_id"]
 
                 self.active_threads_table.delete(record_id)
@@ -205,8 +222,13 @@ class ThreadManager:
 
                         self.completed_threads_table.delete(record_id)
                         removed_thread = self._completed_cache[user_id].pop(i)
-                        if removed_thread.get("thread_ts") in self._thread_ts_to_user_id:
-                            del self._thread_ts_to_user_id[removed_thread.get("thread_ts")]
+                        if (
+                            removed_thread.get("thread_ts")
+                            in self._thread_ts_to_user_id
+                        ):
+                            del self._thread_ts_to_user_id[
+                                removed_thread.get("thread_ts")
+                            ]
                         print(f"Deleted finished thread of {user_id}")
                         return removed_thread, False
 
@@ -222,86 +244,95 @@ class ThreadManager:
     @property
     def completed_cache(self):
         return self._completed_cache
-        
-    def store_message_mapping(self, fraud_dept_ts, user_id, dm_ts, message_text, thread_ts):
+
+    def store_message_mapping(
+        self, fraud_dept_ts, user_id, dm_ts, message_text, thread_ts
+    ):
         self._message_mappings[fraud_dept_ts] = {
             "user_id": user_id,
             "dm_ts": dm_ts,
             "message_text": message_text,
-            "thread_ts": thread_ts
+            "thread_ts": thread_ts,
         }
-        
+
     def get_message_mapping(self, fraud_dept_ts):
         """Get message mapping by fraud dept timestamp"""
         return self._message_mappings.get(fraud_dept_ts)
-        
+
     def remove_message_mapping(self, fraud_dept_ts):
         """Remove message mapping"""
         if fraud_dept_ts in self._message_mappings:
             del self._message_mappings[fraud_dept_ts]
-            
+
     def get_inactive_threads(self, hours=48):
         """Get threads inactive for more than specified hours"""
         cutoff_time = datetime.now() - timedelta(hours=hours)
         inactive_threads = []
-        
+
         for user_id, thread_info in self._active_cache.items():
             last_activity = thread_info.get("last_activity", datetime.now())
             if last_activity < cutoff_time:
-                inactive_threads.append({
-                    "user_id": user_id,
-                    "thread_info": thread_info,
-                    "hours_inactive": (datetime.now() - last_activity).total_seconds() / 3600
-                })
-                
+                inactive_threads.append(
+                    {
+                        "user_id": user_id,
+                        "thread_info": thread_info,
+                        "hours_inactive": (
+                            datetime.now() - last_activity
+                        ).total_seconds()
+                        / 3600,
+                    }
+                )
+
         return inactive_threads
 
     def get_user_by_thread_ts(self, thread_ts):
         return self._thread_ts_to_user_id.get(thread_ts)
-    
+
     def get_thread_conversation(self, user_id):
         """Get full conversation for a thread"""
         if not self.slack_client or user_id not in self._active_cache:
             return None
-            
+
         thread_info = self._active_cache[user_id]
         channel = thread_info.get("channel")
         thread_ts = thread_info.get("thread_ts")
-        
+
         try:
             # Get all messages in the thread
             response = self.slack_client.conversations_replies(
-                channel=channel,
-                ts=thread_ts,
-                inclusive=True
+                channel=channel, ts=thread_ts, inclusive=True
             )
-            
+
             if not response.get("ok"):
                 return None
-                
+
             messages = response.get("messages", [])
             conversation_text = ""
-            
+
             for msg in messages:
                 # Skip bot messages and system messages
                 if msg.get("bot_id") or msg.get("subtype"):
                     continue
-                    
+
                 user_id_msg = msg.get("user", "")
                 text = msg.get("text", "")
-                
+
                 if text:
                     # Get username for better context
                     try:
                         user_info = self.slack_client.users_info(user=user_id_msg)
-                        username = user_info.get("user", {}).get("real_name") or user_info.get("user", {}).get("name") or user_id_msg
+                        username = (
+                            user_info.get("user", {}).get("real_name")
+                            or user_info.get("user", {}).get("name")
+                            or user_id_msg
+                        )
                     except:
                         username = user_id_msg
-                    
+
                     conversation_text += f"{username}: {text}\n"
-            
+
             return conversation_text.strip()
-            
+
         except Exception as err:
             print(f"Error getting thread conversation for {user_id}: {err}")
             return None
