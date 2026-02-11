@@ -18,6 +18,7 @@ REQUIRED_ENV = (
     "AIRTABLE_BASE_ID",
     "FRAUDPHEUS_WEBHOOK_URLS",
     "FRAUDPHEUS_WEBHOOK_SECRET",
+    "FRAUDPHEUS_API_KEY",
 )
 
 env: dict[str, str] = {name: str(os.getenv(name)) for name in REQUIRED_ENV}
@@ -61,6 +62,10 @@ WEBHOOK_SECRET = env["FRAUDPHEUS_WEBHOOK_SECRET"]
 RETRY_DELAY = 5
 MAX_ATTEMPTS = 3
 
+# === API configuration ===
+
+FRAUDPHEUS_API_KEY = env["FRAUDPHEUS_API_KEY"]
+
 # === Other configuration ===
 
 TRUST_EMOJI = {0: "🔵", 1: "🔴", 2: "🟢", 3: "🟡", 4: "⚠️"}
@@ -72,3 +77,5 @@ TRUST_LABELS = {
     3: "Yellow (Suspicious)",
     4: "Unknown",
 }
+
+IS_DEVELOPMENT = os.getenv("ENVIRONMENT") == "development"

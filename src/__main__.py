@@ -19,24 +19,20 @@ from src.config import (
     CHANNEL,
     TRUST_EMOJI,
     TRUST_LABELS,
-    airtable_base,
+    IS_DEVELOPMENT,
     slack_app,
     slack_client,
     slack_user_client,
 )
+from src.helpers import (
+    UserInfo,
+    get_standard_channel_msg,
+    get_user_info,
+    send_dm_to_user,
+    thread_manager,
+)
 from src.macros import MACROS, expand_macros
-from src.thread_manager import ThreadManager
 from src.webhooks import dispatch_event as dispatch_event_async
-
-thread_manager = ThreadManager(airtable_base, slack_client)
-
-
-class UserInfo(TypedDict):
-    """Structure for user info"""
-
-    name: str
-    avatar: str
-    display_name: str
 
 
 class BackupMessage(TypedDict):
@@ -339,79 +335,6 @@ def create_backup_export():
         return None
 
 
-def get_standard_channel_msg(user_id: str, message_text: str) -> list[dict[str, Any]]:
-    """Get blocks for a standard message uploaded into channel with 2 buttons"""
-    return [
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"<@{user_id}> (User ID: `{user_id}`)"},
-        },
-        {"type": "section", "text": {"type": "mrkdwn", "text": message_text}},
-        {
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": "Reply in this thread to send a response to the user",
-                }
-            ],
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {  # Complete this pain of a thread
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Mark as Completed"},
-                    "style": "primary",
-                    "action_id": "mark_completed",
-                    "value": user_id,
-                    "confirm": {
-                        "title": {"type": "plain_text", "text": "Are you sure?"},
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "This will mark the thread as complete.",
-                        },
-                        "confirm": {"type": "plain_text", "text": "Mark as Completed"},
-                        "deny": {"type": "plain_text", "text": "Cancel"},
-                    },
-                },
-                {  # Delete it pls
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Delete thread"},
-                    "style": "danger",
-                    "action_id": "delete_thread",
-                    "value": user_id,
-                    "confirm": {
-                        "title": {"type": "plain_text", "text": "Are you sure?"},
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "This will delete the entire thread and new replies will go into a new thread",
-                        },
-                        "confirm": {"type": "plain_text", "text": "Delete"},
-                        "deny": {"type": "plain_text", "text": "Cancel"},
-                    },
-                },
-            ],
-        },
-    ]
-
-
-def get_user_info(user_id: str) -> Optional[UserInfo]:
-    """Get user's profile info"""
-    try:
-        response: dict[str, Any] = slack_client.users_info(user=user_id)  # type: ignore
-        user = response["user"]
-        return {
-            "name": user["real_name"] or user["name"],
-            "avatar": user["profile"].get("image_72", ""),
-            "display_name": user["profile"].get("display_name", user["name"]),
-        }
-
-    except SlackApiError as err:
-        print(f"Error during user info collection: {err}")
-        return None
-
-
 def _get_author_name(user_id: str) -> str:
     """Get author name for event dispatch, falling back to 'Unknown'"""
     info = get_user_info(user_id)
@@ -537,34 +460,6 @@ def create_new_thread(
         return False
 
 
-def send_dm_to_user(
-    user_id: str,
-    reply_text: str,
-    files: Optional[list[dict[str, Any]]] = None,
-) -> Optional[str]:
-    """Send a reply back to the user"""
-    try:
-        dm_response: dict[str, Any] = slack_client.conversations_open(users=[user_id])  # type: ignore
-        dm_channel: str = dm_response["channel"]["id"]
-
-        if files or reply_text == "[Shared file]":
-            return None
-
-        response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
-            channel=dm_channel,
-            text=reply_text,
-            username="Fraud Department",
-            icon_emoji=":ban:",
-        )
-
-        return response["ts"] if response.get("ok") else None
-
-    except SlackApiError as err:
-        print(f"Error sending reply to user {user_id}: {err}")
-        print(f"Error response: {err.response}")
-        return None
-
-
 def extract_user_id(text: str) -> Optional[str]:
     """Extracts user ID from a mention text <@U000000> or from a direct ID"""
     mention_format = re.search(r"<@([A-Z0-9]+)>", text)
@@ -578,7 +473,8 @@ def extract_user_id(text: str) -> Optional[str]:
     return None
 
 
-@slack_app.command("/fdchat")  # type: ignore
+FDCHAT_COMMAND = f"/fdchat{'_dev' if IS_DEVELOPMENT else ''}"
+@slack_app.command(FDCHAT_COMMAND)  # type: ignore
 def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
     """Handle conversations started by staff"""
     ack()
@@ -828,6 +724,8 @@ def handle_dms(
     message_text: str,
     files: list[dict[str, Any]],
     say: Any,
+    client: WebClient,
+    channel_id: str,
 ) -> None:
     """Receive and react to messages sent to the bot"""
     user_info = get_user_info(user_id)
@@ -836,8 +734,10 @@ def handle_dms(
         return
     success = post_message_to_channel(user_id, message_text, user_info, files)
     if not success:
-        say(
-            "There was some error during processing of your message, try again another time"
+        client.chat_postEphemeral( # type: ignore
+            channel=channel_id,
+            user=user_id,
+            text="An error occurred while processing your message. Please try again later.",
         )
 
 
@@ -861,7 +761,10 @@ def handle_all_messages(
         return
 
     if channel_type == "im":
-        handle_dms(user_id, message_text, files, say)
+        if channel_id:
+            handle_dms(user_id, message_text, files, say, client, channel_id)
+        else:
+            print(f"Warning: Received IM message without channel_id for user {user_id}")
     elif channel_id == CHANNEL:
         if message_text and message_text.strip() == "!backup":
             handle_backup_command(message, client)

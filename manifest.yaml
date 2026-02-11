@@ -1,0 +1,47 @@
+display_information:
+  name: DEV Fraud Squad
+  description: Fraud squad dev app
+  background_color: "#2c2d30"
+features:
+  bot_user:
+    display_name: fraud_department_dev
+    always_online: true
+  slash_commands:
+    - command: /fdchat_dev
+      description: "[DEV] Start a chat with someone"
+      usage_hint: "@user message"
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - channels:read
+      - chat:write
+      - chat:write.customize
+      - chat:write.public
+      - commands
+      - groups:history
+      - groups:read
+      - im:history
+      - im:read
+      - im:write
+      - reactions:read
+      - reactions:write
+      - users:read
+      - files:read
+      - files:write
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.channels
+      - message.groups
+      - message.im
+      - reaction_added
+      - reaction_removed
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
