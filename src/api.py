@@ -66,9 +66,7 @@ def require_api_key(request: Request) -> None:
         )
 
 
-ThreadTuple = tuple[
-    TimedAirtableMessage | AirtableMessage, str
-]
+ThreadTuple = tuple[TimedAirtableMessage | AirtableMessage, str]
 
 
 @app.get("/api/v1/threads")
@@ -102,9 +100,7 @@ async def list_threads(
             )
             for m in resp.get("messages", []):
                 if m.get("ts") == thread_ts:
-                    ts_float: float = (
-                        float(m["ts"]) if m.get("ts") else 0.0
-                    )
+                    ts_float: float = float(m["ts"]) if m.get("ts") else 0.0
                     started_at_iso = (
                         datetime.fromtimestamp(ts_float, tz=timezone.utc)
                         .isoformat()
@@ -163,25 +159,26 @@ async def start_thread(
         thread_manager.create_active_thread(
             user_slack_id, CHANNEL, response["ts"], response["ts"]
         )
-        asyncio.create_task(dispatch_event(
-            "thread.created",
-            {
-                "thread_ts": response["ts"],
-                "user_slack_id": user_slack_id,
-                "started_at": datetime.fromtimestamp(
-                    float(response["ts"]), tz=timezone.utc
-                )
-                .isoformat()
-                .replace("+00:00", "Z"),
-                "initial_message": initial_message,
-            },
-        ))
+        asyncio.create_task(
+            dispatch_event(
+                "thread.created",
+                {
+                    "thread_ts": response["ts"],
+                    "user_slack_id": user_slack_id,
+                    "started_at": datetime.fromtimestamp(
+                        float(response["ts"]), tz=timezone.utc
+                    )
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                    "initial_message": initial_message,
+                },
+            )
+        )
         return {"thread_ts": response["ts"]}
     except SlackApiError as err:
         raise HTTPException(
             500,
-            f"Slack error: "
-            f"{err.response['error'] if err.response else str(err)}",  # type: ignore
+            f"Slack error: {err.response['error'] if err.response else str(err)}",  # type: ignore
         ) from err
 
 
@@ -197,9 +194,7 @@ async def get_thread_history(
         )
         messages: list[dict[str, Any]] = replies.get("messages", [])
         filtered: list[dict[str, Any]] = []
-        target_user_id: Optional[str] = thread_manager.get_user_by_thread_ts(
-            thread_ts
-        )
+        target_user_id: Optional[str] = thread_manager.get_user_by_thread_ts(thread_ts)
 
         for m in messages:
             if m.get("ts") == thread_ts:
@@ -226,18 +221,14 @@ async def get_thread_history(
                     )
                 )
             ):
-                ts_float: float = (
-                    float(m["ts"]) if m.get("ts") else 0.0
-                )
+                ts_float: float = float(m["ts"]) if m.get("ts") else 0.0
                 if text.startswith("!"):
                     text = text[1:]
                 filtered.append(
                     {
                         "id": m.get("ts"),
                         "content": text,
-                        "timestamp": datetime.fromtimestamp(
-                            ts_float, tz=timezone.utc
-                        )
+                        "timestamp": datetime.fromtimestamp(ts_float, tz=timezone.utc)
                         .isoformat()
                         .replace("+00:00", "Z"),
                         "is_from_user": is_from_user,
@@ -251,8 +242,7 @@ async def get_thread_history(
             raise HTTPException(404, "Thread not found") from err
         raise HTTPException(
             500,
-            f"Slack error: "
-            f"{err.response['error'] if err.response else str(err)}",  # type: ignore
+            f"Slack error: {err.response['error'] if err.response else str(err)}",  # type: ignore
         ) from err
 
 
@@ -268,9 +258,7 @@ async def send_message(
     if not content or not author_slack_id:
         raise HTTPException(400, "Missing required fields")
 
-    target_user_id: Optional[str] = thread_manager.get_user_by_thread_ts(
-        thread_ts
-    )
+    target_user_id: Optional[str] = thread_manager.get_user_by_thread_ts(thread_ts)
     if not target_user_id:
         raise HTTPException(404, "Thread not found")
 
@@ -297,29 +285,27 @@ async def send_message(
             post["ts"], target_user_id, dm_ts, expanded, thread_ts
         )
         author_name: str = _get_user_name(author_slack_id)
-        asyncio.create_task(dispatch_event(
-            "message.staff.new",
-            {
-                "thread_ts": thread_ts,
-                "message": {
-                    "id": post["ts"],
-                    "content": content,
-                    "timestamp": datetime.fromtimestamp(
-                        ts_float, tz=timezone.utc
-                    )
-                    .isoformat()
-                    .replace("+00:00", "Z"),
-                    "is_from_user": False,
-                    "author": {"name": author_name},
+        asyncio.create_task(
+            dispatch_event(
+                "message.staff.new",
+                {
+                    "thread_ts": thread_ts,
+                    "message": {
+                        "id": post["ts"],
+                        "content": content,
+                        "timestamp": datetime.fromtimestamp(ts_float, tz=timezone.utc)
+                        .isoformat()
+                        .replace("+00:00", "Z"),
+                        "is_from_user": False,
+                        "author": {"name": author_name},
+                    },
                 },
-            },
-        ))
+            )
+        )
         return {
             "id": post["ts"],
             "content": content,
-            "timestamp": datetime.fromtimestamp(
-                ts_float, tz=timezone.utc
-            )
+            "timestamp": datetime.fromtimestamp(ts_float, tz=timezone.utc)
             .isoformat()
             .replace("+00:00", "Z"),
             "is_from_user": False,
@@ -328,8 +314,7 @@ async def send_message(
     except SlackApiError as err:
         raise HTTPException(
             500,
-            f"Slack error: "
-            f"{err.response['error'] if err.response else str(err)}",  # type: ignore
+            f"Slack error: {err.response['error'] if err.response else str(err)}",  # type: ignore
         ) from err
 
 
@@ -354,9 +339,7 @@ async def post_internal_note(
     if content:
         main_text += f" {content}"
 
-    blocks: list[dict[str, str]] = [
-        {"type": "markdown", "text": main_text}
-    ]
+    blocks: list[dict[str, str]] = [{"type": "markdown", "text": main_text}]
 
     for att in attachments:
         if att.get("image_url"):
@@ -373,16 +356,12 @@ async def post_internal_note(
         slack_client.chat_postMessage(  # type: ignore
             channel=CHANNEL,
             thread_ts=thread_ts,
-            text=(
-                f"[Internal Note from {author_name}]: "
-                f"{display_text}"
-            ),
+            text=(f"[Internal Note from {author_name}]: {display_text}"),
             blocks=blocks,
         )
         return {"success": True}
     except SlackApiError as err:
         raise HTTPException(
             500,
-            f"Slack error: "
-            f"{err.response['error'] if err.response else str(err)}",  # type: ignore
+            f"Slack error: {err.response['error'] if err.response else str(err)}",  # type: ignore
         ) from err

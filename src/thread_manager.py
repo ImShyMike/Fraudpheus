@@ -356,7 +356,7 @@ class ThreadManager:
 
         try:
             # Get all messages in the thread
-            response = self.slack_client.conversations_replies( # type: ignore
+            response = self.slack_client.conversations_replies(  # type: ignore
                 channel=channel, ts=thread_ts, inclusive=True
             )
 
@@ -377,19 +377,19 @@ class ThreadManager:
                 if text:
                     # Get username for better context
                     try:
-                        user_info = self.slack_client.users_info(user=user_id_msg) # type: ignore
+                        user_info = self.slack_client.users_info(user=user_id_msg)  # type: ignore
                         username = (
                             user_info.get("user", {}).get("real_name")
                             or user_info.get("user", {}).get("name")
                             or user_id_msg
                         )
-                    except Exception: # pylint: disable=broad-except
+                    except Exception:  # pylint: disable=broad-except
                         username = user_id_msg
 
                     conversation_text += f"{username}: {text}\n"
 
             return conversation_text.strip()
 
-        except Exception as err: # pylint: disable=broad-except
+        except Exception as err:  # pylint: disable=broad-except
             print(f"Error getting thread conversation for {user_id}: {err}")
             return None

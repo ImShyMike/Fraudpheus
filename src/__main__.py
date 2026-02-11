@@ -17,15 +17,16 @@ from slack_sdk.errors import SlackApiError
 
 from src.config import (
     CHANNEL,
+    IS_DEVELOPMENT,
     TRUST_EMOJI,
     TRUST_LABELS,
-    IS_DEVELOPMENT,
     slack_app,
     slack_client,
     slack_user_client,
 )
 from src.helpers import (
     UserInfo,
+    download_reupload_files,
     get_standard_channel_msg,
     get_user_info,
     send_dm_to_user,
@@ -103,8 +104,10 @@ class BackupExport(TypedDict):
 
 def dispatch_event(event_type: str, data: dict[str, Any]):
     """Dispatch an event to all configured webhooks in a background thread."""
+
     def _run():
         asyncio.run(dispatch_event_async(event_type, data))
+
     threading.Thread(target=_run, daemon=True).start()
 
 
@@ -476,6 +479,8 @@ def extract_user_id(text: str) -> Optional[str]:
 
 
 FDCHAT_COMMAND = f"/fdchat{'_dev' if IS_DEVELOPMENT else ''}"
+
+
 @slack_app.command(FDCHAT_COMMAND)  # type: ignore
 def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
     """Handle conversations started by staff"""
@@ -737,13 +742,15 @@ def handle_dms(
         return
     success = post_message_to_channel(user_id, message_text, user_info, files)
     if not success:
-        client.chat_postEphemeral( # type: ignore
+        client.chat_postEphemeral(  # type: ignore
             channel=channel_id,
             user=user_id,
             text="An error occurred while processing your message. Please try again later.",
         )
     else:
-        client.reactions_add(channel=channel_id, timestamp=message_ts, name="white_check_mark")  # type: ignore
+        client.reactions_add(  # type: ignore
+            channel=channel_id, timestamp=message_ts, name="white_check_mark"
+        )
 
 
 @slack_app.message("")  # type: ignore
@@ -768,7 +775,9 @@ def handle_all_messages(
 
     if channel_type == "im":
         if channel_id:
-            handle_dms(user_id, message_text, files, say, client, channel_id, message_ts)
+            handle_dms(
+                user_id, message_text, files, say, client, channel_id, message_ts
+            )
         else:
             print(f"Warning: Received IM message without channel_id for user {user_id}")
     elif channel_id == CHANNEL:
@@ -1304,55 +1313,6 @@ def format_file(files: list[dict[str, Any]]) -> str:
         file_info.append(f"File *{file_name} ({file_type}, {size_str})")
 
     return "\n" + "\n".join(file_info)
-
-
-def download_reupload_files(
-    files: list[dict[str, Any]],
-    channel: str,
-    thread_ts: Optional[str] = None,
-) -> list[dict[str, Any]]:
-    """Download files, then reupload them to the target channel"""
-    reuploaded: list[dict[str, Any]] = []
-    for file in files:
-        try:
-            file_url: Optional[str] = file.get("url_private_download") or file.get(
-                "url_private"
-            )
-            if not file_url:
-                print(
-                    f"Can't really download without any url for file {file.get('name', 'unknown')}"
-                )
-                continue
-
-            headers = {"Authorization": f"Bearer {os.getenv('SLACK_BOT_TOKEN')}"}
-            response = httpx.get(file_url, headers=headers, timeout=10)
-
-            if response.status_code == 200:
-                upload_params: dict[str, Any] = {
-                    "channel": channel,
-                    "file": response.content,
-                    "filename": file.get("name", "file"),
-                    "title": file.get(
-                        "title", file.get("name", "Some file without name?")
-                    ),
-                }
-
-                if thread_ts:
-                    upload_params["thread_ts"] = thread_ts
-
-                upload_response: dict[str, Any] = slack_client.files_upload_v2(  # type: ignore
-                    **upload_params
-                )
-
-                if upload_response.get("ok"):
-                    reuploaded.append(upload_response["file"])
-                else:
-                    print(f"Failed to reupload file: {upload_response.get('error')}")
-
-        except Exception as err:  # pylint: disable=broad-except
-            print(f"Error processing file: {file.get('name', 'unknown')}: {err}")
-
-    return reuploaded
 
 
 @slack_app.event("message")  # type: ignore

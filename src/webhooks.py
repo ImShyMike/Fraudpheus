@@ -25,10 +25,14 @@ async def _deliver_async(
             if 200 <= resp.status_code < 300:
                 return
             if 500 <= resp.status_code < 600:
-                print(f"Server error {resp.status_code} from {url}, attempt {attempt + 1}")
+                print(
+                    f"Server error {resp.status_code} from {url}, attempt {attempt + 1}"
+                )
                 return
-            print(f"Unexpected status code {resp.status_code} from {url}, attempt {attempt + 1}")
-        except Exception: # pylint: disable=broad-except
+            print(
+                f"Unexpected status code {resp.status_code} from {url}, attempt {attempt + 1}"
+            )
+        except Exception:  # pylint: disable=broad-except
             print(f"Error delivering webhook to {url}, attempt {attempt + 1}")
         attempt += 1
         if attempt < MAX_ATTEMPTS:
@@ -48,9 +52,6 @@ async def dispatch_event(event_type: str, data: dict[str, Any]):
     timeout = httpx.Timeout(10.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         await asyncio.gather(
-            *(
-                _deliver_async(url, body_bytes, headers, client)
-                for url in WEBHOOK_URLS
-            ),
+            *(_deliver_async(url, body_bytes, headers, client) for url in WEBHOOK_URLS),
             return_exceptions=True,
         )
