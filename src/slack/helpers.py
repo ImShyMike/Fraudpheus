@@ -1,4 +1,4 @@
-"""Shared helpers used by both __main__ and api"""
+"""Shared helpers"""
 
 import os
 from typing import Any, Optional, TypedDict
@@ -7,7 +7,7 @@ import httpx
 from slack_sdk.errors import SlackApiError
 
 from src.config import airtable_base, slack_client
-from src.thread_manager import ThreadManager
+from src.services.thread_manager import ThreadManager
 
 
 class UserInfo(TypedDict):

@@ -10,15 +10,15 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from slack_sdk.errors import SlackApiError
 
 from src.config import CHANNEL, slack_client
-from src.helpers import (
+from src.slack.helpers import (
     UserInfo,
     get_standard_channel_msg,
-    get_user_info,
     send_dm_to_user,
     thread_manager,
 )
-from src.macros import expand_macros
-from src.thread_manager import AirtableMessage, TimedAirtableMessage
+from src.slack.macros import expand_macros
+from src.services.user_cache import cached_user_info, get_user_name
+from src.services.thread_manager import AirtableMessage, TimedAirtableMessage
 from src.webhooks import dispatch_event
 
 load_dotenv()
@@ -28,28 +28,6 @@ if not API_KEY:
     print("Warning: FRAUDPHEUS_API_KEY not set; API will reject all requests")
 
 app = FastAPI()
-
-_user_cache: dict[str, UserInfo] = {}
-
-
-def cached_user_info(user_id: str) -> Optional[UserInfo]:
-    """Get user info with caching"""
-    if not user_id:
-        return None
-    if user_id in _user_cache:
-        return _user_cache[user_id]
-    info: Optional[UserInfo] = get_user_info(user_id)
-    if info:
-        _user_cache[user_id] = info
-    return info
-
-
-def _get_user_name(user_id: Optional[str]) -> str:
-    """Get user display name, falling back to 'Unknown'"""
-    if not user_id:
-        return "Unknown"
-    info = cached_user_info(user_id)
-    return info["name"] if info else "Unknown"
 
 
 def require_api_key(request: Request) -> None:
@@ -232,7 +210,7 @@ async def get_thread_history(
                         .isoformat()
                         .replace("+00:00", "Z"),
                         "is_from_user": is_from_user,
-                        "author": {"name": _get_user_name(user)},
+                        "author": {"name": get_user_name(user)},
                     }
                 )
         filtered.sort(key=lambda x: str(x["id"]))
@@ -284,7 +262,7 @@ async def send_message(
         thread_manager.store_message_mapping(
             post["ts"], target_user_id, dm_ts, expanded, thread_ts
         )
-        author_name: str = _get_user_name(author_slack_id)
+        author_name: str = get_user_name(author_slack_id)
         asyncio.create_task(
             dispatch_event(
                 "message.staff.new",

@@ -14,12 +14,13 @@ services:
       - FRAUDPHEUS_API_KEY=${FRAUDPHEUS_API_KEY}
       - FRAUDPHEUS_WEBHOOK_URLS=${FRAUDPHEUS_WEBHOOK_URLS}
       - FRAUDPHEUS_WEBHOOK_SECRET=${FRAUDPHEUS_WEBHOOK_SECRET}
+      - IS_DEVELOPMENT=${IS_DEVELOPMENT}
 
   api:
     build: .
     restart: unless-stopped
     # in theory this should override the CMD line
-    command: ['uvicorn', 'src.api:app', '--host', '0.0.0.0', '--port', '8000']
+    command: ['python', '-m', 'uvicorn', 'src.api:app', '--host', '0.0.0.0', '--port', '8000']
     ports:
       - '8000:8000'
     environment:
@@ -32,3 +33,4 @@ services:
       - FRAUDPHEUS_API_KEY=${FRAUDPHEUS_API_KEY}
       - FRAUDPHEUS_WEBHOOK_URLS=${FRAUDPHEUS_WEBHOOK_URLS}
       - FRAUDPHEUS_WEBHOOK_SECRET=${FRAUDPHEUS_WEBHOOK_SECRET}
+      - IS_DEVELOPMENT=${IS_DEVELOPMENT}

@@ -1,0 +1,184 @@
+"""Thread and message helpers."""
+
+import re
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from slack_sdk.errors import SlackApiError
+
+from src.config import CHANNEL, TRUST_EMOJI, TRUST_LABELS, slack_client
+from src.slack.helpers import (
+    UserInfo,
+    download_reupload_files,
+    get_standard_channel_msg,
+    thread_manager,
+)
+from src.services.trust import get_user_trust_level
+from src.services.user_cache import get_user_name
+from src.services.webhook_dispatcher import dispatch_event
+
+
+def extract_user_id(text: str) -> Optional[str]:
+    """Extracts user ID from a mention text <@U000000> or from a direct ID."""
+    mention_format = re.search(r"<@([A-Z0-9]+)>", text)
+    if mention_format:
+        return mention_format.group(1)
+
+    id_match = re.search(r"\b(U[A-Z0-9]{8,})\b", text)
+    if id_match:
+        return id_match.group(1)
+
+    return None
+
+
+def get_past_threads_info(user_id: str) -> str:
+    """Get formatted info about user's past threads."""
+    completed_threads = thread_manager.get_completed_threads(user_id)
+
+    if not completed_threads:
+        return "No previous threads"
+
+    thread_links: list[str] = []
+    for thread in completed_threads[:5]:
+        thread_ts = thread.get("thread_ts", "")
+        if thread_ts:
+            thread_url = (
+                "https://hackclub.slack.com/archives"
+                f"/{CHANNEL}/p{thread_ts.replace('.', '')}"
+            )
+            thread_links.append(f"• <{thread_url}|Thread from {thread_ts}>")
+
+    result = f"*Past threads ({len(completed_threads)} total):*\n" + "\n".join(
+        thread_links
+    )
+    if len(completed_threads) > 5:
+        result += f"\n_...and {len(completed_threads) - 5} more_"
+
+    return result
+
+
+def post_message_to_channel(
+    user_id: str,
+    message_text: str,
+    user_info: UserInfo,
+    files: Optional[list[dict[str, Any]]] = None,
+) -> Optional[bool]:
+    """Post user's message to the given channel, either as new message or new reply."""
+    if not message_text or message_text.strip() == "":
+        return None
+
+    file_yes = message_text == "[Shared a file]"
+    if thread_manager.has_active_thread(user_id):
+        thread_info = thread_manager.get_active_thread(user_id)
+        if not thread_info:
+            print(f"Could not retrieve thread info for user {user_id}")
+            return False
+        thread_ts = thread_info.get("thread_ts")
+        if not thread_ts:
+            print(f"Could not retrieve thread ts for user {user_id}")
+            return False
+
+        try:
+            response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
+                channel=CHANNEL,
+                thread_ts=thread_ts,
+                text=f"{message_text}",
+                username=user_info["display_name"],
+                icon_url=user_info["avatar"],
+            )
+
+            if file_yes and files:
+                download_reupload_files(files, CHANNEL, thread_ts)
+
+            thread_manager.update_thread_activity(user_id)
+            dispatch_event(
+                "message.user.new",
+                {
+                    "thread_ts": thread_ts,
+                    "message": {
+                        "id": response["ts"],
+                        "content": message_text,
+                        "timestamp": datetime.fromtimestamp(float(response["ts"]))
+                        .astimezone(timezone.utc)
+                        .isoformat()
+                        .replace("+00:00", "Z"),
+                        "is_from_user": True,
+                        "author": {"name": user_info["display_name"]},
+                    },
+                },
+            )
+            return True
+
+        except SlackApiError as err:
+            print(f"Error writing to a thread: {err}")
+            return False
+    else:
+        return create_new_thread(user_id, message_text, user_info, files)
+
+
+def create_new_thread(
+    user_id: str,
+    message_text: str,
+    user_info: UserInfo,
+    files: Optional[list[dict[str, Any]]] = None,
+) -> bool:
+    """Create new thread in the channel."""
+    try:
+        response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
+            channel=CHANNEL,
+            text=f"*{user_id}*:\n{message_text}",
+            username=user_info["display_name"],
+            icon_url=user_info["avatar"],
+            blocks=get_standard_channel_msg(user_id, message_text),
+        )
+
+        if files:
+            download_reupload_files(files, CHANNEL, response["ts"])
+
+        success = thread_manager.create_active_thread(
+            user_id, CHANNEL, response["ts"], response["ts"]
+        )
+        if success:
+            trust_level = get_user_trust_level(user_id)
+            trust_emoji = TRUST_EMOJI.get(trust_level, TRUST_EMOJI[4])
+            trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
+            past_threads = get_past_threads_info(user_id)
+
+            slack_client.chat_postMessage(  # type: ignore
+                channel=CHANNEL,
+                thread_ts=response["ts"],
+                text=(
+                    f"*User Info:*\n{trust_emoji} Trust Level: {trust_label}\n\n"
+                    f"{past_threads}"
+                ),
+                username="Thread Info",
+                icon_emoji=":information_source:",
+            )
+
+            dispatch_event(
+                "message.user.new",
+                {
+                    "thread_ts": response["ts"],
+                    "message": {
+                        "id": response["ts"],
+                        "content": message_text,
+                        "timestamp": datetime.fromtimestamp(float(response["ts"]))
+                        .astimezone(timezone.utc)
+                        .isoformat()
+                        .replace("+00:00", "Z"),
+                        "is_from_user": True,
+                        "author": {"name": user_info["display_name"]},
+                    },
+                },
+            )
+
+        return success
+
+    except SlackApiError as err:
+        print(f"Error creating new thread: {err}")
+        return False
+
+
+def get_author_name(user_id: str) -> str:
+    """Get author name for event dispatch, falling back to 'Unknown'."""
+    return get_user_name(user_id)
