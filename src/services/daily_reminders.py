@@ -23,7 +23,7 @@ _reminder_message_ts: dict[str, str] = {}
 
 def _get_reminder_hours(reminder_count: int) -> float:
     """Get new reminder wait time based on sent count"""
-    multiplier = min(max(1, reminder_count + 1), 5)
+    multiplier = max(1, (2 ** min(reminder_count, 3)))
     return REMINDER_INTERVAL_BASE_HOURS * multiplier
 
 
