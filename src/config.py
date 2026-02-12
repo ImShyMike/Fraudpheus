@@ -16,7 +16,6 @@ REQUIRED_ENV = (
     "AIRTABLE_API_KEY",
     "AIRTABLE_BASE_ID",
     "FRAUDPHEUS_WEBHOOK_SECRET",
-    "FRAUDPHEUS_API_KEY",
 )
 
 env: dict[str, str] = {name: os.getenv(name, "") for name in REQUIRED_ENV}
@@ -64,7 +63,7 @@ MAX_ATTEMPTS = 3
 
 # === API configuration ===
 
-FRAUDPHEUS_API_KEY = env["FRAUDPHEUS_API_KEY"]
+FRAUDPHEUS_API_KEY = os.getenv("FRAUDPHEUS_API_KEY", None)
 
 # == Reminders configuration ===
 

@@ -1,15 +1,13 @@
 """REST API endpoints for Fraudpheus"""
 
 import asyncio
-import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from slack_sdk.errors import SlackApiError
 
-from src.config import CHANNEL, slack_client
+from src.config import CHANNEL, FRAUDPHEUS_API_KEY, slack_client
 from src.services.thread_manager import AirtableMessage, TimedAirtableMessage
 from src.services.user_cache import cached_user_info, get_user_name
 from src.slack.helpers import (
@@ -21,10 +19,7 @@ from src.slack.helpers import (
 from src.slack.macros import expand_macros
 from src.webhooks import dispatch_event
 
-load_dotenv()
-
-API_KEY: Optional[str] = os.getenv("FRAUDPHEUS_API_KEY")
-if not API_KEY:
+if not FRAUDPHEUS_API_KEY:
     print("Warning: FRAUDPHEUS_API_KEY not set; API will reject all requests")
 
 app = FastAPI()
@@ -38,7 +33,7 @@ def require_api_key(request: Request) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
         )
     token: str = auth.split(" ", 1)[1].strip()
-    if token != API_KEY:
+    if token != FRAUDPHEUS_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
         )
