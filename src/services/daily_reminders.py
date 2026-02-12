@@ -64,7 +64,11 @@ def _check_and_remind(thread_manager: "ThreadManager") -> None:
         last_activity = thread_info.get("last_activity", now)
         time_since_activity = now - last_activity
         if time_since_activity < timedelta(hours=REMINDER_INTERVAL_HOURS):
-            continue
+            continue # thread is still active
+
+        created_at = thread_info.get("created_at", now)
+        if last_activity == created_at:
+            continue # thread is empty
 
         thread_ts = thread_info.get("thread_ts", "")
         if not thread_ts:
