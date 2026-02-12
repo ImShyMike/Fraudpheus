@@ -18,6 +18,7 @@ _timer: threading.Timer | None = None
 _running = False  # pylint: disable=C0103
 _reminder_counts: dict[str, int] = {}
 _last_reminded: dict[str, datetime] = {}
+_reminder_message_ts: dict[str, str] = {}
 
 
 def _get_reminder_hours(reminder_count: int) -> float:
@@ -30,6 +31,7 @@ def clear_reminder_state(user_id: str) -> None:
     """Clear reminder tracking for a user"""
     _reminder_counts.pop(user_id, None)
     _last_reminded.pop(user_id, None)
+    _reminder_message_ts.pop(user_id, None)
 
 
 def get_reminder_count(user_id: str) -> int:
@@ -64,17 +66,24 @@ def _send_reminder(
             username="Thread Reminder",
             icon_emoji=":bell:",
         )
-        slack_client.chat_postMessage(  # type: ignore
+        thread_reminder_text = (
+            f"*Reminder #{ordinal}:* This thread has been inactive "
+            f"for over {hour_count} hours.\n"
+            f"Please follow up with the user or mark the thread as resolved/completed."
+        )
+
+        existing_ts = _reminder_message_ts.get(user_id)
+        if existing_ts:
+            slack_client.chat_delete(channel=CHANNEL, ts=existing_ts)  # type: ignore
+
+        thread_msg: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
             channel=CHANNEL,
             thread_ts=thread_ts,
-            text=(
-                f"*Reminder #{ordinal}:* This thread has been inactive "
-                f"for over {hour_count} hours.\n"
-                f"Please follow up with the user or mark the thread as resolved/completed."
-            ),
+            text=thread_reminder_text,
             username="Thread Reminder",
             icon_emoji=":bell:",
         )
+        _reminder_message_ts[user_id] = thread_msg["ts"]  # type: ignore
         return True
     except Exception as err:  # pylint: disable=broad-except
         print(f"Failed to send daily reminder to {creator_id} about {user_id}: {err}")
