@@ -103,13 +103,13 @@ def _check_and_remind(thread_manager: "ThreadManager") -> None:
         last_reminded = _last_reminded.get(user_id)
         if last_reminded and last_activity > last_reminded:
             clear_reminder_state(user_id)
-            continue # thread has new activity, reset reminder count and timer
+            continue  # thread has new activity, reset reminder count and timer
 
         reminder_count = _reminder_counts.get(user_id, 0)
         interval = timedelta(hours=_get_reminder_hours(reminder_count))
         anchor = last_reminded or last_activity
         if now - anchor < interval:
-            continue # not enough time since last reminder or activity
+            continue  # not enough time since last reminder or activity
 
         created_at = thread_info.get("created_at", now)
         if last_activity == created_at:

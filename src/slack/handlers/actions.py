@@ -36,7 +36,7 @@ def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> 
             )
             send_dm_to_user(
                 user_id,
-                "*Your case has been marked as completed by the fraud department.*"
+                "*Your case has been marked as completed by the fraud department.*",
             )
             dispatch_event(
                 "thread.status.changed",

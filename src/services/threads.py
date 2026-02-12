@@ -98,9 +98,7 @@ def post_message_to_channel(
                 slack_client.chat_postMessage(  # type: ignore
                     channel=CHANNEL,
                     thread_ts=thread_ts,
-                    text=(
-                        f"Thread with <@{user_id}> has been unresolved."
-                    ),
+                    text=(f"Thread with <@{user_id}> has been unresolved."),
                     username="Thread Info",
                     icon_emoji=":information_source:",
                     reply_broadcast=True,
