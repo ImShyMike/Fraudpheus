@@ -13,5 +13,4 @@ _REGISTERED_HANDLERS = (_actions, _commands, _events)
 if __name__ == "__main__":
     handler = SocketModeHandler(slack_app, SLACK_APP_TOKEN)
     print("Bot running!")
-    print("Auto-close inactive threads system started")
     handler.start()
