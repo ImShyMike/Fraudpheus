@@ -55,7 +55,9 @@ slack-sdk==3.40.0
     #   fraudpheus
     #   slack-bolt
 starlette==0.52.1
-    # via fastapi
+    # via
+    #   fastapi
+    #   fraudpheus
 typing-extensions==4.15.0
     # via
     #   fastapi
