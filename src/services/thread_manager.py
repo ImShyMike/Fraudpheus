@@ -6,6 +6,8 @@ from typing import Any, NotRequired, Optional, TypedDict
 from pyairtable import Base
 from slack_sdk import WebClient
 
+from src.services.daily_reminders import clear_reminder_state
+
 
 class AirtableMessage(TypedDict):
     """Represents a message thread in Slack and its mapping to Airtable"""
@@ -269,6 +271,7 @@ class ThreadManager:
                 self._thread_ts_to_user_id[str(active_thread["thread_ts"])] = user_id
             del self._active_cache[user_id]
             self._resolved_users.discard(user_id)
+            clear_reminder_state(user_id)
 
             print(f"Completed thread for user {user_id}")
             return True
@@ -285,6 +288,7 @@ class ThreadManager:
             record_id = self._active_cache[user_id]["record_id"]
             self.active_threads_table.update(record_id, {"resolved": True})
             self._resolved_users.add(user_id)
+            clear_reminder_state(user_id)
             print(f"Resolved thread for user {user_id}")
             return True
         except Exception as err:  # pylint: disable=broad-except

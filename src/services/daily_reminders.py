@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from src.config import (
     CHANNEL,
     CHECK_INTERVAL_SECONDS,
-    REMINDER_INTERVAL_HOURS,
+    REMINDER_INTERVAL_BASE_HOURS,
     slack_client,
 )
 
@@ -16,10 +16,31 @@ if TYPE_CHECKING:
 
 _timer: threading.Timer | None = None
 _running = False  # pylint: disable=C0103
+_reminder_counts: dict[str, int] = {}
+_last_reminded: dict[str, datetime] = {}
 
 
-def _send_reminder(creator_id: str, user_id: str, thread_ts: str) -> bool:
-    """Send a reminder DM to the creator of an inactive thread"""
+def _get_reminder_hours(reminder_count: int) -> float:
+    """Get new reminder wait time based on sent count"""
+    multiplier = min(max(1, reminder_count + 1), 5)
+    return REMINDER_INTERVAL_BASE_HOURS * multiplier
+
+
+def clear_reminder_state(user_id: str) -> None:
+    """Clear reminder tracking for a user"""
+    _reminder_counts.pop(user_id, None)
+    _last_reminded.pop(user_id, None)
+
+
+def get_reminder_count(user_id: str) -> int:
+    """Get the number of reminders sent for a user's thread"""
+    return _reminder_counts.get(user_id, 0)
+
+
+def _send_reminder(
+    creator_id: str, user_id: str, thread_ts: str, reminder_count: int
+) -> bool:
+    """Send a reminder DM to the creator of an inactive thread (+ a reminder in the thread)"""
     try:
         response: dict[str, Any] = slack_client.conversations_open(  # type: ignore
             users=[creator_id]
@@ -31,12 +52,25 @@ def _send_reminder(creator_id: str, user_id: str, thread_ts: str) -> bool:
             f"/{CHANNEL}/p{thread_ts.replace('.', '')}"
         )
 
+        ordinal = reminder_count + 1
+        hour_count = _get_reminder_hours(reminder_count)
         slack_client.chat_postMessage(  # type: ignore
             channel=dm_channel,
             text=(
-                f"*Reminder:* <@{user_id}>'s case is still open "
-                f"and has been inactive for over {REMINDER_INTERVAL_HOURS} hours.\n\n"
+                f"*Reminder #{ordinal}:* <@{user_id}>'s case is still open "
+                f"and has been inactive for over {hour_count} hours.\n\n"
                 f"<{thread_url}|View thread>"
+            ),
+            username="Thread Reminder",
+            icon_emoji=":bell:",
+        )
+        slack_client.chat_postMessage(  # type: ignore
+            channel=CHANNEL,
+            thread_ts=thread_ts,
+            text=(
+                f"*Reminder #{ordinal}:* This thread has been inactive "
+                f"for over {hour_count} hours.\n"
+                f"Please follow up with the user or mark the thread as resolved/completed."
             ),
             username="Thread Reminder",
             icon_emoji=":bell:",
@@ -65,20 +99,33 @@ def _check_and_remind(thread_manager: "ThreadManager") -> None:
             continue  # thread is resolved, no reminders
 
         last_activity = thread_info.get("last_activity", now)
-        time_since_activity = now - last_activity
-        if time_since_activity < timedelta(hours=REMINDER_INTERVAL_HOURS):
-            continue # thread is still active
+
+        last_reminded = _last_reminded.get(user_id)
+        if last_reminded and last_activity > last_reminded:
+            clear_reminder_state(user_id)
+            continue # thread has new activity, reset reminder count and timer
+
+        reminder_count = _reminder_counts.get(user_id, 0)
+        interval = timedelta(hours=_get_reminder_hours(reminder_count))
+        anchor = last_reminded or last_activity
+        if now - anchor < interval:
+            continue # not enough time since last reminder or activity
 
         created_at = thread_info.get("created_at", now)
         if last_activity == created_at:
-            continue # thread is empty
+            continue  # thread is empty
 
         thread_ts = thread_info.get("thread_ts", "")
         if not thread_ts:
             continue
 
-        if _send_reminder(creator_id, user_id, thread_ts):
-            print(f"Sent daily reminder to creator {creator_id} about user {user_id}")
+        if _send_reminder(creator_id, user_id, thread_ts, reminder_count):
+            _reminder_counts[user_id] = reminder_count + 1
+            _last_reminded[user_id] = now
+            print(
+                f"Sent reminder #{reminder_count + 1} to "
+                f"creator {creator_id} about user {user_id}"
+            )
 
     # schedule the next check
     _timer = threading.Timer(

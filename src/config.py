@@ -68,10 +68,8 @@ FRAUDPHEUS_API_KEY = env["FRAUDPHEUS_API_KEY"]
 
 # == Reminders configuration ===
 
-# How often the scheduler checks
 CHECK_INTERVAL_SECONDS = 60 * 60
-# Minimum hours of inactivity before sending a reminder
-REMINDER_INTERVAL_HOURS = 24
+REMINDER_INTERVAL_BASE_HOURS = 6
 
 # === Other configuration ===
 
