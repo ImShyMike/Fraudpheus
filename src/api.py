@@ -4,7 +4,8 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from slack_sdk.errors import SlackApiError
 
 from src.config import CHANNEL, FRAUDPHEUS_API_KEY, slack_client
@@ -23,29 +24,38 @@ if not FRAUDPHEUS_API_KEY:
     print("Warning: FRAUDPHEUS_API_KEY not set; API will reject all requests")
 
 app = FastAPI()
+bearer_auth = HTTPBearer(auto_error=False)
 
 
-def require_api_key(request: Request) -> None:
+def require_api_key(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_auth),
+) -> None:
     """Validate Bearer token from Authorization header"""
     auth: Optional[str] = request.headers.get("Authorization")
-    if not auth or not auth.startswith("Bearer "):
+    if credentials:
+        token: str = credentials.credentials
+    elif auth and auth.startswith("Bearer "):
+        token = auth.split(" ", 1)[1].strip()
+    else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
         )
-    token: str = auth.split(" ", 1)[1].strip()
     if token != FRAUDPHEUS_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
         )
 
 
+api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
+
+
 ThreadTuple = tuple[TimedAirtableMessage | AirtableMessage, str]
 
 
-@app.get("/api/v1/threads")
+@api_router.get("/threads")
 async def list_threads(
     user_slack_id: Optional[str] = None,
-    _: None = Depends(require_api_key),
 ) -> list[dict[str, Any]]:
     """List all threads for a user"""
     if not user_slack_id:
@@ -95,10 +105,9 @@ async def list_threads(
     return summaries
 
 
-@app.post("/api/v1/threads", status_code=201)
+@api_router.post("/threads", status_code=201)
 async def start_thread(
     body: dict[str, Any],
-    _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     """Start a new thread with a user"""
     user_slack_id: Optional[str] = body.get("user_slack_id")
@@ -155,10 +164,9 @@ async def start_thread(
         ) from err
 
 
-@app.get("/api/v1/threads/{thread_ts}")
+@api_router.get("/threads/{thread_ts}")
 async def get_thread_history(
     thread_ts: str,
-    _: None = Depends(require_api_key),
 ) -> list[dict[str, Any]]:
     """Get message history for a thread"""
     try:
@@ -219,11 +227,10 @@ async def get_thread_history(
         ) from err
 
 
-@app.post("/api/v1/threads/{thread_ts}/messages", status_code=201)
+@api_router.post("/threads/{thread_ts}/messages", status_code=201)
 async def send_message(
     thread_ts: str,
     body: dict[str, Any],
-    _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     """Send a message in a thread"""
     content: Optional[str] = body.get("content")
@@ -291,11 +298,10 @@ async def send_message(
         ) from err
 
 
-@app.post("/api/v1/threads/{thread_ts}/internal_note", status_code=201)
+@api_router.post("/threads/{thread_ts}/internal_note", status_code=201)
 async def post_internal_note(
     thread_ts: str,
     body: dict[str, Any],
-    _: None = Depends(require_api_key),
 ) -> dict[str, bool]:
     """Post an internal note in a thread"""
     content: Optional[str] = body.get("content")
@@ -338,3 +344,6 @@ async def post_internal_note(
             500,
             f"Slack error: {err.response['error'] if err.response else str(err)}",  # type: ignore
         ) from err
+
+
+app.include_router(api_router)
