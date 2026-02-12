@@ -48,6 +48,7 @@ class ThreadManager:
         self._completed_cache: dict[str, list[AirtableMessage]] = {}
         self._message_mappings: dict[str, MessageMapping] = {}
         self._thread_ts_to_user_id: dict[str, str] = {}
+        self._resolved_users: set[str] = set()
         self.active_threads_table = airtable_base.table("Active Threads")
         self.completed_threads_table = airtable_base.table("Completed Threads")
         self.slack_client = slack_client
@@ -71,6 +72,8 @@ class ThreadManager:
                         "last_activity": datetime.now(),
                         "creator_id": fields.get("creator_id", None),
                     }
+                    if fields.get("resolved"):
+                        self._resolved_users.add(user_id)
                     if fields.get("thread_ts"):
                         self._thread_ts_to_user_id[str(fields.get("thread_ts"))] = (
                             user_id
@@ -107,6 +110,21 @@ class ThreadManager:
         except Exception as err:  # pylint: disable=broad-except
             print(f"Error loading threads from Airtable: {err}")
 
+    def update_creator_id(self, user_id: str, creator_id: Optional[str]) -> bool:
+        """Update creator ID for a thread, if it exists in cache and Airtable"""
+        if user_id not in self._active_cache:
+            return False
+
+        try:
+            record_id = self._active_cache[user_id]["record_id"]
+            self.active_threads_table.update(record_id, {"creator_id": creator_id})
+            self._active_cache[user_id]["creator_id"] = creator_id
+            print(f"Updated creator ID for user {user_id} to {creator_id}")
+            return True
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error updating creator ID in Airtable: {err}")
+            return False
+
     def _check_airtable_for_user(self, user_id: str) -> Optional[TimedAirtableMessage]:
         try:
             # Use Airtable's formula syntax for an exact match
@@ -128,6 +146,8 @@ class ThreadManager:
             }
 
             self._active_cache[user_id] = thread_data
+            if fields.get("resolved"):
+                self._resolved_users.add(user_id)
             if thread_data.get("thread_ts"):
                 self._thread_ts_to_user_id[str(thread_data["thread_ts"])] = user_id
 
@@ -248,6 +268,7 @@ class ThreadManager:
             if active_thread.get("thread_ts"):
                 self._thread_ts_to_user_id[str(active_thread["thread_ts"])] = user_id
             del self._active_cache[user_id]
+            self._resolved_users.discard(user_id)
 
             print(f"Completed thread for user {user_id}")
             return True
@@ -255,6 +276,38 @@ class ThreadManager:
         except Exception as err:  # pylint: disable=broad-except
             print(f"Error completing thread: {err}")
             return False
+
+    def resolve_thread(self, user_id: str) -> bool:
+        """Mark an active thread as resolved"""
+        if user_id not in self._active_cache:
+            return False
+        try:
+            record_id = self._active_cache[user_id]["record_id"]
+            self.active_threads_table.update(record_id, {"resolved": True})
+            self._resolved_users.add(user_id)
+            print(f"Resolved thread for user {user_id}")
+            return True
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error resolving thread: {err}")
+            return False
+
+    def unresolve_thread(self, user_id: str) -> bool:
+        """Unmark a thread as resolved"""
+        if user_id not in self._active_cache or user_id not in self._resolved_users:
+            return False
+        try:
+            record_id = self._active_cache[user_id]["record_id"]
+            self.active_threads_table.update(record_id, {"resolved": False})
+            self._resolved_users.discard(user_id)
+            print(f"Unresolved thread for user {user_id}")
+            return True
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error unresolving thread: {err}")
+            return False
+
+    def is_resolved(self, user_id: str) -> bool:
+        """Check if a thread is resolved"""
+        return user_id in self._resolved_users
 
     def get_completed_threads(self, user_id: str) -> list[AirtableMessage]:
         """Get completed threads of a user"""
@@ -275,6 +328,7 @@ class ThreadManager:
 
                 self.active_threads_table.delete(record_id)
                 del self._active_cache[user_id]
+                self._resolved_users.discard(user_id)
                 print(f"Deleted active thread for {user_id}")
                 return deleted_thread, True
 

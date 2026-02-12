@@ -16,6 +16,10 @@ from src.config import (
     slack_app,
     slack_client,
 )
+from src.services.backup import create_backup_export
+from src.services.threads import extract_user_id, get_author_name, get_past_threads_info
+from src.services.trust import get_user_trust_level
+from src.services.webhook_dispatcher import dispatch_event
 from src.slack.helpers import (
     get_standard_channel_msg,
     get_user_info,
@@ -23,10 +27,6 @@ from src.slack.helpers import (
     thread_manager,
 )
 from src.slack.macros import expand_macros
-from src.services.backup import create_backup_export
-from src.services.threads import extract_user_id, get_author_name, get_past_threads_info
-from src.services.trust import get_user_trust_level
-from src.services.webhook_dispatcher import dispatch_event
 
 FDCHAT_COMMAND = f"/fdchat{'_dev' if IS_DEVELOPMENT else ''}"
 
@@ -107,10 +107,14 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
                 )
                 return
 
+            is_resolved = thread_manager.is_resolved(target_user_id)
             response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=thread_ts_value,
-                text=f"*<@{requester_id}> continued:*\n{staff_message}",
+                text=(
+                    f"Thread with {user_id} has been unresolved.\n"
+                    f"*<@{requester_id}> continued:*\n{staff_message}"
+                ),
             )
             dm_ts = send_dm_to_user(target_user_id, staff_message)
             thread_manager.update_thread_activity(target_user_id)
@@ -150,10 +154,22 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
                 )
 
             if dm_ts:
+                updated = thread_manager.update_creator_id(target_user_id, requester_id)
+                if not updated:
+                    print(
+                        f"Failed to update creator_id for user {target_user_id} in thread manager"
+                    )
+                if is_resolved:
+                    thread_manager.unresolve_thread(target_user_id)
+                    slack_client.reactions_remove(  # type: ignore
+                        channel=CHANNEL,
+                        timestamp=thread_ts_value,
+                        name="ballot_box_with_check",
+                    )
                 respond(
                     {
                         "response_type": "ephemeral",
-                        "text": f"Message sent in some older thread to {user_info['display_name']}",
+                        "text": f"Message sent in an older thread to {user_info['display_name']}",
                     }
                 )
             else:
@@ -198,7 +214,10 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
         )
 
         thread_manager.create_active_thread(
-            target_user_id, CHANNEL, response["ts"], response["ts"],
+            target_user_id,
+            CHANNEL,
+            response["ts"],
+            response["ts"],
             creator_id=requester_id,
         )
 

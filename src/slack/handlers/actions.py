@@ -30,13 +30,13 @@ def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> 
             client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=messages_ts,
-                text="This thread has been marked as completed!",
+                text="This thread has been closed!",
                 icon_emoji=":information_source:",
                 username="Thread Info",
             )
             send_dm_to_user(
                 user_id,
-                "Your case has been marked as completed by the fraud department."
+                "*Your case has been marked as completed by the fraud department.*"
             )
             dispatch_event(
                 "thread.status.changed",
@@ -54,6 +54,46 @@ def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> 
 
     except SlackApiError as err:
         print(f"Error marking thread as completed: {err}")
+
+
+@slack_app.action("mark_resolved")  # type: ignore
+def handle_mark_resolved(ack: Any, body: dict[str, Any], client: WebClient) -> None:
+    """Mark thread as resolved (stops reminders but keeps thread open)"""
+    ack()
+
+    user_id: str = body["actions"][0]["value"]
+    messages_ts: str = body["message"]["ts"]
+
+    try:
+        success = thread_manager.resolve_thread(user_id)
+        if success:
+            print(f"Marked thread for user {user_id} as resolved")
+            client.reactions_add(  # type: ignore
+                channel=CHANNEL, timestamp=messages_ts, name="ballot_box_with_check"
+            )
+            client.chat_postMessage(  # type: ignore
+                channel=CHANNEL,
+                thread_ts=messages_ts,
+                text="This thread has been marked as resolved.",
+                icon_emoji=":information_source:",
+                username="Thread Info",
+            )
+            dispatch_event(
+                "thread.status.changed",
+                {
+                    "thread_ts": body["message"]["ts"],
+                    "user_slack_id": user_id,
+                    "new_status": "resolved",
+                    "timestamp": datetime.now(timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                },
+            )
+        else:
+            print(f"Failed to mark {user_id}'s thread as resolved")
+
+    except SlackApiError as err:
+        print(f"Error marking thread as resolved: {err}")
 
 
 @slack_app.action("delete_thread")  # type: ignore

@@ -89,6 +89,7 @@ They have to include these fields:<br><br>
 - `thread_ts` - single line text
 - `funny_field` - single line text
 - `creator_id` - single line text
+- `resolved` - checkbox
 <br><br>
 
 <b>Completed Threads</b>
@@ -97,6 +98,7 @@ They have to include these fields:<br><br>
 - `completed_at` - created time
 - `message_ts` - single line text
 - `thread_ts` - single line text
+- `creator_id` - single line text
 
 
 ### env

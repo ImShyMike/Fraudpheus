@@ -56,10 +56,13 @@ def _check_and_remind(thread_manager: "ThreadManager") -> None:
 
     now = datetime.now()
 
-    for user_id, thread_info in thread_manager.active_cache.items():
+    for user_id, thread_info in list(thread_manager.active_cache.items()):
         creator_id = thread_info.get("creator_id")
         if not creator_id:
             continue  # this isn't an fdchat thread
+
+        if thread_manager.is_resolved(user_id):
+            continue  # thread is resolved, no reminders
 
         last_activity = thread_info.get("last_activity", now)
         time_since_activity = now - last_activity

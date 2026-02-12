@@ -4,4 +4,9 @@
 
 In the `Active Threads` table:
 
-- Add `creator_id` field (single line text)
+- Add `creator_id` - single line text
+- Add `resolved` - checkbox
+
+In the `Completed Threads` table:
+
+- Add `creator_id` - single line text

@@ -7,15 +7,15 @@ from typing import Any, Optional
 from slack_sdk.errors import SlackApiError
 
 from src.config import CHANNEL, TRUST_EMOJI, TRUST_LABELS, slack_client
+from src.services.trust import get_user_trust_level
+from src.services.user_cache import get_user_name
+from src.services.webhook_dispatcher import dispatch_event
 from src.slack.helpers import (
     UserInfo,
     download_reupload_files,
     get_standard_channel_msg,
     thread_manager,
 )
-from src.services.trust import get_user_trust_level
-from src.services.user_cache import get_user_name
-from src.services.webhook_dispatcher import dispatch_event
 
 
 def extract_user_id(text: str) -> Optional[str]:
@@ -93,6 +93,21 @@ def post_message_to_channel(
                 download_reupload_files(files, CHANNEL, thread_ts)
 
             thread_manager.update_thread_activity(user_id)
+            if thread_manager.is_resolved(user_id):
+                thread_manager.unresolve_thread(user_id)
+                slack_client.chat_postMessage(  # type: ignore
+                    channel=CHANNEL,
+                    thread_ts=thread_ts,
+                    text=(
+                        f"Thread with <@{user_id}> has been unresolved."
+                    ),
+                    username="Thread Info",
+                    icon_emoji=":information_source:",
+                    reply_broadcast=True,
+                )
+                slack_client.reactions_remove(  # type: ignore
+                    channel=CHANNEL, timestamp=thread_ts, name="ballot_box_with_check"
+                )
             dispatch_event(
                 "message.user.new",
                 {

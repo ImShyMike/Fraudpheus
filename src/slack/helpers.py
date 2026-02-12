@@ -38,7 +38,7 @@ def get_user_info(user_id: str) -> Optional[UserInfo]:
 
 
 def get_standard_channel_msg(user_id: str, message_text: str) -> list[dict[str, Any]]:
-    """Get blocks for a standard message uploaded into channel with 2 buttons"""
+    """Get blocks for a standard message uploaded into channel with 3 buttons"""
     return [
         {
             "type": "section",
@@ -79,11 +79,45 @@ def get_standard_channel_msg(user_id: str, message_text: str) -> list[dict[str, 
                         },
                         "text": {
                             "type": "mrkdwn",
-                            "text": ("This will mark the thread as complete."),
+                            "text": (
+                                "This will mark the thread as completed and archive it. "
+                                "If the user sends a new message, a new thread will be created."
+                            ),
                         },
                         "confirm": {
                             "type": "plain_text",
                             "text": "Mark as Completed",
+                        },
+                        "deny": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                    },
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Mark as Resolved",
+                    },
+                    "action_id": "mark_resolved",
+                    "value": user_id,
+                    "confirm": {
+                        "title": {
+                            "type": "plain_text",
+                            "text": "Are you sure?",
+                        },
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                "This will mark the thread as resolved. "
+                                "Reminders will stop, but the thread stays open. "
+                                "If the user sends a new message, you'll be notified."
+                            ),
+                        },
+                        "confirm": {
+                            "type": "plain_text",
+                            "text": "Mark as Resolved",
                         },
                         "deny": {
                             "type": "plain_text",
@@ -108,9 +142,9 @@ def get_standard_channel_msg(user_id: str, message_text: str) -> list[dict[str, 
                         "text": {
                             "type": "mrkdwn",
                             "text": (
-                                "This will delete the entire"
-                                " thread and new replies will"
-                                " go into a new thread"
+                                "This will delete the entire thread and all its messages. "
+                                "This action cannot be undone. "
+                                "If the user sends a new message, a new thread will be created."
                             ),
                         },
                         "confirm": {
