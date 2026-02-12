@@ -1,21 +1,21 @@
 """Slack event handlers"""
 
-from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from src.config import CHANNEL, slack_app, slack_client, slack_user_client
-from src.slack.helpers import get_user_info, send_dm_to_user, thread_manager
-from src.slack.macros import MACROS, expand_macros
 from src.services.threads import get_author_name, post_message_to_channel
 from src.services.webhook_dispatcher import dispatch_event
 from src.slack.handlers.commands import (
     handle_backup_command,
     handle_bulkresolve_command,
 )
+from src.slack.helpers import get_user_info, send_dm_to_user, thread_manager
+from src.slack.macros import MACROS, expand_macros
 
 
 def handle_dms(

@@ -8,8 +8,8 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from src.config import CHANNEL, slack_app, slack_user_client
-from src.slack.helpers import send_dm_to_user, thread_manager
 from src.services.webhook_dispatcher import dispatch_event
+from src.slack.helpers import send_dm_to_user, thread_manager
 
 
 @slack_app.action("mark_completed")  # type: ignore

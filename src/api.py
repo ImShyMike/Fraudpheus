@@ -10,6 +10,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from slack_sdk.errors import SlackApiError
 
 from src.config import CHANNEL, slack_client
+from src.services.thread_manager import AirtableMessage, TimedAirtableMessage
+from src.services.user_cache import cached_user_info, get_user_name
 from src.slack.helpers import (
     UserInfo,
     get_standard_channel_msg,
@@ -17,8 +19,6 @@ from src.slack.helpers import (
     thread_manager,
 )
 from src.slack.macros import expand_macros
-from src.services.user_cache import cached_user_info, get_user_name
-from src.services.thread_manager import AirtableMessage, TimedAirtableMessage
 from src.webhooks import dispatch_event
 
 load_dotenv()

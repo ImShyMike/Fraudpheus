@@ -8,7 +8,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.routing import Route
 
-from src.config import WEBSOCKET_MODE, PORT, SLACK_APP_TOKEN, slack_app
+from src.config import PORT, SLACK_APP_TOKEN, WEBSOCKET_MODE, slack_app
 from src.services.daily_reminders import start_reminder_service, stop_reminder_service
 from src.slack.handlers import actions as _actions
 from src.slack.handlers import commands as _commands
