@@ -33,7 +33,7 @@ FDCHAT_COMMAND = f"/fdchat{'_dev' if IS_DEVELOPMENT else ''}"
 
 @slack_app.command(FDCHAT_COMMAND)  # type: ignore
 def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
-    """Handle conversations started by staff."""
+    """Handle conversations started by staff"""
     ack()
     # for the leekers
     if command.get("channel_id") != CHANNEL:
@@ -198,7 +198,8 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
         )
 
         thread_manager.create_active_thread(
-            target_user_id, CHANNEL, response["ts"], response["ts"]
+            target_user_id, CHANNEL, response["ts"], response["ts"],
+            creator_id=requester_id,
         )
 
         trust_level = get_user_trust_level(target_user_id)
@@ -277,7 +278,7 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
 
 
 def handle_bulkresolve_command(message: dict[str, Any], client: WebClient) -> None:
-    """Handle !bulkresolve command to auto-resolve threads inactive for 2+ days."""
+    """Handle !bulkresolve command to auto-resolve threads inactive for 2+ days"""
     try:
         thread_ts: Optional[str] = message.get("thread_ts")
         user_id: Optional[str] = message.get("user")
@@ -414,7 +415,7 @@ def handle_bulkresolve_command(message: dict[str, Any], client: WebClient) -> No
 
 
 def handle_backup_command(message: dict[str, Any], client: WebClient) -> None:
-    """Handle !backup command to start fraud case extraction."""
+    """Handle !backup command to start fraud case extraction"""
     try:
         thread_ts: Optional[str] = message.get("thread_ts")
         user_id: Optional[str] = message.get("user")

@@ -10,7 +10,7 @@ features:
     - command: /fdchat_dev
       description: "[DEV] Start a chat with someone"
       usage_hint: "@user message"
-      should_escape: false
+      should_escape: true
 oauth_config:
   scopes:
     bot:

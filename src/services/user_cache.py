@@ -1,4 +1,4 @@
-"""Cached user info helpers."""
+"""Cached user info helpers"""
 
 from typing import Optional
 
@@ -8,7 +8,7 @@ _user_cache: dict[str, UserInfo] = {}
 
 
 def cached_user_info(user_id: str) -> Optional[UserInfo]:
-    """Get user info with caching."""
+    """Get user info with caching"""
     if not user_id:
         return None
     if user_id in _user_cache:
@@ -20,7 +20,7 @@ def cached_user_info(user_id: str) -> Optional[UserInfo]:
 
 
 def get_user_name(user_id: Optional[str]) -> str:
-    """Get user display name, falling back to 'Unknown'."""
+    """Get user display name, falling back to 'Unknown'"""
     if not user_id:
         return "Unknown"
     info = cached_user_info(user_id)

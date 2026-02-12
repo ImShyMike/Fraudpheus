@@ -130,6 +130,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "slack-bolt" },
     { name = "slack-sdk" },
+    { name = "starlette" },
     { name = "uvicorn" },
 ]
 
@@ -141,6 +142,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "slack-bolt", specifier = ">=1.27.0" },
     { name = "slack-sdk", specifier = ">=3.40.0" },
+    { name = "starlette", specifier = ">=0.52.1" },
     { name = "uvicorn", specifier = ">=0.40.0" },
 ]
 

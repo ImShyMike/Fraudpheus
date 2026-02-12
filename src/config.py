@@ -27,6 +27,7 @@ CHANNEL_ID = env["CHANNEL_ID"]
 AIRTABLE_API_KEY = env["AIRTABLE_API_KEY"]
 AIRTABLE_BASE_ID = env["AIRTABLE_BASE_ID"]
 
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
 SLACK_USER_TOKEN = os.getenv("SLACK_USER_TOKEN", "")
 
 missing_env = [name for name, value in env.items() if not value]
@@ -38,7 +39,10 @@ if missing_env:
 
 # === Slack configuration ===
 
-slack_app = App(token=SLACK_BOT_TOKEN)
+if SLACK_SIGNING_SECRET:
+    slack_app = App(token=SLACK_BOT_TOKEN, signing_secret=SLACK_SIGNING_SECRET)
+else:
+    slack_app = App(token=SLACK_BOT_TOKEN)
 slack_client = WebClient(token=SLACK_BOT_TOKEN)
 slack_user_client = WebClient(token=SLACK_USER_TOKEN)
 
@@ -62,6 +66,13 @@ MAX_ATTEMPTS = 3
 
 FRAUDPHEUS_API_KEY = env["FRAUDPHEUS_API_KEY"]
 
+# == Reminders configuration ===
+
+# How often the scheduler checks
+CHECK_INTERVAL_SECONDS = 10
+# Minimum hours of inactivity before sending a reminder
+REMINDER_INTERVAL_HOURS = 0.01
+
 # === Other configuration ===
 
 TRUST_EMOJI = {0: "🔵", 1: "🔴", 2: "🟢", 3: "🟡", 4: "⚠️"}
@@ -74,4 +85,9 @@ TRUST_LABELS = {
     4: "Unknown",
 }
 
-IS_DEVELOPMENT = os.getenv("ENVIRONMENT") == "development"
+PORT = int(os.getenv("APP_PORT", "3000"))
+WEBSOCKET_MODE = os.getenv("WEBSOCKET_MODE", "true").lower() == "true"
+IS_DEVELOPMENT = os.getenv("ENVIRONMENT") != "production"
+
+if not WEBSOCKET_MODE and not SLACK_SIGNING_SECRET:
+    raise ValueError("SLACK_SIGNING_SECRET is required when not using websocket mode")

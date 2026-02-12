@@ -1,7 +1,7 @@
 """Thread manager with Airtable integration"""
 
 from datetime import datetime, timedelta
-from typing import Optional, TypedDict
+from typing import Any, NotRequired, Optional, TypedDict
 
 from pyairtable import Base
 from slack_sdk import WebClient
@@ -14,6 +14,7 @@ class AirtableMessage(TypedDict):
     channel: Optional[str]
     message_ts: Optional[str]
     record_id: str
+    creator_id: NotRequired[Optional[str]]
 
 
 class TimedAirtableMessage(AirtableMessage):
@@ -68,6 +69,7 @@ class ThreadManager:
                         "message_ts": fields.get("message_ts", None),
                         "record_id": record["id"],
                         "last_activity": datetime.now(),
+                        "creator_id": fields.get("creator_id", None),
                     }
                     if fields.get("thread_ts"):
                         self._thread_ts_to_user_id[str(fields.get("thread_ts"))] = (
@@ -122,6 +124,7 @@ class ThreadManager:
                 "message_ts": fields.get("message_ts"),
                 "record_id": record["id"],
                 "last_activity": datetime.now(),
+                "creator_id": fields.get("creator_id", None),
             }
 
             self._active_cache[user_id] = thread_data
@@ -153,18 +156,25 @@ class ThreadManager:
         return self._check_airtable_for_user(user_id) is not None
 
     def create_active_thread(
-        self, user_id: str, channel: str, thread_ts: str, message_ts: str
+        self,
+        user_id: str,
+        channel: str,
+        thread_ts: str,
+        message_ts: str,
+        creator_id: Optional[str] = None,
     ) -> bool:
         """Create new active thread for user, return True if successful, False otherwise"""
         try:
-            record = self.active_threads_table.create(
-                {
-                    "user_id": user_id,
-                    "thread_ts": thread_ts,
-                    "channel": channel,
-                    "message_ts": message_ts,
-                }
-            )
+            airtable_fields: dict[str, Any] = {
+                "user_id": user_id,
+                "thread_ts": thread_ts,
+                "channel": channel,
+                "message_ts": message_ts,
+            }
+            if creator_id is not None:
+                airtable_fields["creator_id"] = creator_id
+
+            record = self.active_threads_table.create(airtable_fields)
 
             self._active_cache[user_id] = {
                 "thread_ts": thread_ts,
@@ -172,6 +182,7 @@ class ThreadManager:
                 "message_ts": message_ts,
                 "record_id": record["id"],
                 "last_activity": datetime.now(),
+                "creator_id": creator_id,
             }
             self._thread_ts_to_user_id[thread_ts] = user_id
 
@@ -210,14 +221,17 @@ class ThreadManager:
             active_thread = self._active_cache[user_id]
 
             # Create the record for completed thread, delete the active one
-            completed_record = self.completed_threads_table.create(
-                {
-                    "user_id": user_id,
-                    "thread_ts": active_thread["thread_ts"],
-                    "channel": active_thread["channel"],
-                    "message_ts": active_thread["message_ts"],
-                }
-            )
+            completed_fields: dict[str, Any] = {
+                "user_id": user_id,
+                "thread_ts": active_thread["thread_ts"],
+                "channel": active_thread["channel"],
+                "message_ts": active_thread["message_ts"],
+            }
+            creator_id = active_thread.get("creator_id")
+            if creator_id:
+                completed_fields["creator_id"] = creator_id
+
+            completed_record = self.completed_threads_table.create(completed_fields)
             self.active_threads_table.delete(active_thread["record_id"])
 
             # Update cache

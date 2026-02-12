@@ -27,7 +27,7 @@ def handle_dms(
     channel_id: str,
     message_ts: str,
 ) -> None:
-    """Receive and react to messages sent to the bot."""
+    """Receive and react to messages sent to the bot"""
     user_info = get_user_info(user_id)
     if not user_info:
         say("Hiya! Couldn't process your message, try again another time")
@@ -52,7 +52,7 @@ def handle_all_messages(
     client: WebClient,
     logger: logging.Logger,  # pylint: disable=unused-argument
 ) -> None:
-    """Handle all messages related to the bot."""
+    """Handle all messages related to the bot"""
     user_id: str = message["user"]
     message_text: str = message["text"]
     channel_type: str = message.get("channel_type", "")
@@ -82,7 +82,7 @@ def handle_all_messages(
 
 
 def handle_channel_reply(message: dict[str, Any], client: WebClient) -> None:
-    """Handle replies in channel to send them to users."""
+    """Handle replies in channel to send them to users"""
     thread_ts: str = message["thread_ts"]
     reply_text: str = message["text"]
     files: list[dict[str, Any]] = message.get("files", [])
@@ -231,7 +231,7 @@ def handle_file_shared(
 
 @slack_app.event("message")  # type: ignore
 def handle_message_events(body: dict[str, Any], logger: logging.Logger) -> None:
-    """Handle message events including deletions."""
+    """Handle message events including deletions"""
     event: dict[str, Any] = body.get("event", {})
 
     if event.get("subtype") == "message_deleted":
@@ -241,7 +241,7 @@ def handle_message_events(body: dict[str, Any], logger: logging.Logger) -> None:
 
 
 def handle_message_deletion(event: dict[str, Any], logger: logging.Logger) -> None:
-    """Handle message deletion events."""
+    """Handle message deletion events"""
     try:
         deleted_ts: Optional[str] = event.get("deleted_ts")
         channel: Optional[str] = event.get("channel")
@@ -259,7 +259,7 @@ def handle_message_deletion(event: dict[str, Any], logger: logging.Logger) -> No
 
 
 def handle_fraud_dept_deletion(deleted_ts: str, logger: logging.Logger) -> None:
-    """Handle deletion of messages by fraud dept members."""
+    """Handle deletion of messages by fraud dept members"""
     try:
         mapping = thread_manager.get_message_mapping(deleted_ts)
         if not mapping:
@@ -307,11 +307,11 @@ def handle_fraud_dept_deletion(deleted_ts: str, logger: logging.Logger) -> None:
 def handle_user_dm_deletion(  # pylint: disable=unused-argument
     deleted_ts: str, dm_channel: str, logger: logging.Logger
 ) -> None:
-    """Handle deletion of messages by users."""
+    """Handle deletion of messages by users"""
 
 
 def handle_message_changed(event: dict[str, Any], logger: logging.Logger) -> None:
-    """Handle message edit events."""
+    """Handle message edit events"""
     try:
         message: dict[str, Any] = event.get("message", {})
         edited = message.get("edited")
@@ -347,6 +347,6 @@ def handle_message_changed(event: dict[str, Any], logger: logging.Logger) -> Non
 
 @slack_app.error  # type: ignore
 def error_handler(error: Any, body: Any, logger: logging.Logger) -> None:
-    """Global error handler for Slack events."""
+    """Global error handler for Slack events"""
     logger.exception(f"Error: {error}")
     logger.info(f"Request body: {body}")

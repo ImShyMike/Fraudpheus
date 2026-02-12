@@ -88,6 +88,7 @@ They have to include these fields:<br><br>
 - `message_ts` - single line text
 - `thread_ts` - single line text
 - `funny_field` - single line text
+- `creator_id` - single line text
 <br><br>
 
 <b>Completed Threads</b>

@@ -14,7 +14,7 @@ from src.services.webhook_dispatcher import dispatch_event
 
 @slack_app.action("mark_completed")  # type: ignore
 def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> None:
-    """Complete the thread."""
+    """Complete the thread"""
     ack()
 
     user_id: str = body["actions"][0]["value"]
@@ -58,7 +58,7 @@ def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> 
 
 @slack_app.action("delete_thread")  # type: ignore
 def handle_delete_thread(ack: Any, body: dict[str, Any], client: WebClient) -> None:
-    """Handle deleting thread."""
+    """Handle deleting thread"""
     ack()
 
     user_id: str = body["actions"][0]["value"]

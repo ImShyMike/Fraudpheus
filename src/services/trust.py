@@ -1,10 +1,10 @@
-"""Trust level lookups."""
+"""Trust level lookups"""
 
 import httpx
 
 
 def get_user_trust_level(slack_id: str) -> int:
-    """Get user's trust level from hackatime API."""
+    """Get user's trust level from hackatime API"""
     try:
         response = httpx.get(
             f"https://hackatime.hackclub.com/api/v1/users/{slack_id}/trust_factor",

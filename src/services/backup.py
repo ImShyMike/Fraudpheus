@@ -1,4 +1,4 @@
-"""Backup export helpers."""
+"""Backup export helpers"""
 
 from datetime import datetime, timezone
 from typing import Any, Optional, TypedDict
@@ -10,7 +10,7 @@ from src.slack.helpers import thread_manager
 
 
 class BackupMessage(TypedDict):
-    """Structure for a message in backup export."""
+    """Structure for a message in backup export"""
 
     ts: str
     user: Optional[str]
@@ -23,7 +23,7 @@ class BackupMessage(TypedDict):
 
 
 class BackupCase(TypedDict):
-    """Structure for a fraud case in backup export."""
+    """Structure for a fraud case in backup export"""
 
     case_id: str
     reported_user_id: str
@@ -36,7 +36,7 @@ class BackupCase(TypedDict):
 
 
 class BackupThread(TypedDict):
-    """Structure for a thread in backup export."""
+    """Structure for a thread in backup export"""
 
     user_id: str
     thread_ts: str
@@ -44,7 +44,7 @@ class BackupThread(TypedDict):
 
 
 class BackupUser(TypedDict):
-    """Structure for a user in backup export."""
+    """Structure for a user in backup export"""
 
     id: str
     name: str
@@ -56,7 +56,7 @@ class BackupUser(TypedDict):
 
 
 class BackupStats(TypedDict):
-    """Structure for backup export statistics."""
+    """Structure for backup export statistics"""
 
     total_cases: int
     active_cases: int
@@ -66,7 +66,7 @@ class BackupStats(TypedDict):
 
 
 class BackupExport(TypedDict):
-    """Structure for backup export data."""
+    """Structure for backup export data"""
 
     export_timestamp: str
     channel_id: str
@@ -76,7 +76,7 @@ class BackupExport(TypedDict):
 
 
 def get_user_info_for_backup(user_id: str) -> BackupUser:
-    """Get user info for backup export."""
+    """Get user info for backup export"""
     try:
         response: dict[str, Any] = slack_client.users_info(user=user_id)  # type: ignore
         user = response["user"]
@@ -103,7 +103,7 @@ def get_user_info_for_backup(user_id: str) -> BackupUser:
 
 
 def create_backup_export() -> Optional[BackupExport]:
-    """Export all thread data to JSON with full message history."""
+    """Export all thread data to JSON with full message history"""
     try:
         backup_data: BackupExport = {
             "export_timestamp": datetime.now(timezone.utc).isoformat(),

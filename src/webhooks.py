@@ -42,7 +42,7 @@ async def _deliver_async(
 
 
 async def dispatch_event(event_type: str, data: dict[str, Any]):
-    """Dispatch an event to all configured webhooks asynchronously."""
+    """Dispatch an event to all configured webhooks asynchronously"""
     if not WEBHOOK_URLS:
         return
     payload: dict[str, Any] = {"event_type": event_type, "data": data}

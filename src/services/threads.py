@@ -1,4 +1,4 @@
-"""Thread and message helpers."""
+"""Thread and message helpers"""
 
 import re
 from datetime import datetime, timezone
@@ -19,7 +19,7 @@ from src.services.webhook_dispatcher import dispatch_event
 
 
 def extract_user_id(text: str) -> Optional[str]:
-    """Extracts user ID from a mention text <@U000000> or from a direct ID."""
+    """Extracts user ID from a mention text <@U000000> or from a direct ID"""
     mention_format = re.search(r"<@([A-Z0-9]+)>", text)
     if mention_format:
         return mention_format.group(1)
@@ -32,7 +32,7 @@ def extract_user_id(text: str) -> Optional[str]:
 
 
 def get_past_threads_info(user_id: str) -> str:
-    """Get formatted info about user's past threads."""
+    """Get formatted info about user's past threads"""
     completed_threads = thread_manager.get_completed_threads(user_id)
 
     if not completed_threads:
@@ -63,7 +63,7 @@ def post_message_to_channel(
     user_info: UserInfo,
     files: Optional[list[dict[str, Any]]] = None,
 ) -> Optional[bool]:
-    """Post user's message to the given channel, either as new message or new reply."""
+    """Post user's message to the given channel, either as new message or new reply"""
     if not message_text or message_text.strip() == "":
         return None
 
@@ -124,7 +124,7 @@ def create_new_thread(
     user_info: UserInfo,
     files: Optional[list[dict[str, Any]]] = None,
 ) -> bool:
-    """Create new thread in the channel."""
+    """Create new thread in the channel"""
     try:
         response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
             channel=CHANNEL,
@@ -185,5 +185,5 @@ def create_new_thread(
 
 
 def get_author_name(user_id: str) -> str:
-    """Get author name for event dispatch, falling back to 'Unknown'."""
+    """Get author name for event dispatch, falling back to 'Unknown'"""
     return get_user_name(user_id)

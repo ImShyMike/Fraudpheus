@@ -11,5 +11,6 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "slack-bolt>=1.27.0",
     "slack-sdk>=3.40.0",
+    "starlette>=0.52.1",
     "uvicorn>=0.40.0",
 ]
