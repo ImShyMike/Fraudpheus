@@ -1,6 +1,8 @@
 """Daily DM reminder service for active threads"""
 
+import random
 import threading
+import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -127,6 +129,8 @@ def _check_and_remind(thread_manager: "ThreadManager") -> None:
         thread_ts = thread_info.get("thread_ts", "")
         if not thread_ts:
             continue
+
+        time.sleep(random.uniform(1, 5))
 
         if _send_reminder(creator_id, user_id, thread_ts, reminder_count):
             _reminder_counts[user_id] = reminder_count + 1
