@@ -173,10 +173,11 @@ def handle_channel_reply(message: dict[str, Any], client: WebClient) -> None:
 def handle_file_shared(
     event: dict[str, Any], client: WebClient, logger: logging.Logger
 ) -> None:
-    """Handle files being shared."""
+    """Handle files being shared"""
     try:
         file_id: str = event["file_id"]
         user_id: str = event["user_id"]
+        print(f"File shared event - File ID: {file_id}, User ID: {user_id}")
         file_info: dict[str, Any] = client.files_info(file=file_id)  # type: ignore
         file_data: dict[str, Any] = file_info["file"]
 

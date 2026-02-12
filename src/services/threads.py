@@ -67,7 +67,9 @@ def post_message_to_channel(
     if not message_text or message_text.strip() == "":
         return None
 
-    file_yes = message_text == "[Shared a file]"
+    if message_text == "[Shared a file]":
+        return True
+
     if thread_manager.has_active_thread(user_id):
         thread_info = thread_manager.get_active_thread(user_id)
         if not thread_info:
@@ -87,7 +89,7 @@ def post_message_to_channel(
                 icon_url=user_info["avatar"],
             )
 
-            if file_yes and files:
+            if files:
                 download_reupload_files(files, CHANNEL, thread_ts)
 
             thread_manager.update_thread_activity(user_id)
@@ -132,9 +134,6 @@ def create_new_thread(
             blocks=get_standard_channel_msg(user_id, message_text),
         )
 
-        if files:
-            download_reupload_files(files, CHANNEL, response["ts"])
-
         success = thread_manager.create_active_thread(
             user_id, CHANNEL, response["ts"], response["ts"]
         )
@@ -144,7 +143,7 @@ def create_new_thread(
             trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
             past_threads = get_past_threads_info(user_id)
 
-            slack_client.chat_postMessage(  # type: ignore
+            new_msg: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=response["ts"],
                 text=(
@@ -154,6 +153,10 @@ def create_new_thread(
                 username="Thread Info",
                 icon_emoji=":information_source:",
             )
+            new_msg_ts: str = new_msg["ts"]
+
+            if files:
+                download_reupload_files(files, CHANNEL, new_msg_ts)
 
             dispatch_event(
                 "message.user.new",
@@ -171,6 +174,8 @@ def create_new_thread(
                     },
                 },
             )
+        else:
+            print(f"Failed to create thread for user {user_id}")
 
         return success
 
