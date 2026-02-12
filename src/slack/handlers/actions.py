@@ -8,7 +8,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from src.config import CHANNEL, slack_app, slack_user_client
-from src.slack.helpers import thread_manager
+from src.slack.helpers import send_dm_to_user, thread_manager
 from src.services.webhook_dispatcher import dispatch_event
 
 
@@ -21,13 +21,23 @@ def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> 
     messages_ts: str = body["message"]["ts"]
 
     try:
-        client.reactions_add(  # type: ignore
-            channel=CHANNEL, timestamp=messages_ts, name="white_check_mark"
-        )
-
         success = thread_manager.complete_thread(user_id)
         if success:
             print(f"Marked thread for user {user_id} as completed")
+            client.reactions_add(  # type: ignore
+                channel=CHANNEL, timestamp=messages_ts, name="white_check_mark"
+            )
+            client.chat_postMessage(  # type: ignore
+                channel=CHANNEL,
+                thread_ts=messages_ts,
+                text="This thread has been marked as completed!",
+                icon_emoji=":information_source:",
+                username="Thread Info",
+            )
+            send_dm_to_user(
+                user_id,
+                "Your case has been marked as completed by the fraud department."
+            )
             dispatch_event(
                 "thread.status.changed",
                 {
