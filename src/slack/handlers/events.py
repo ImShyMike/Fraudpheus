@@ -205,7 +205,7 @@ def handle_file_shared(
                         client.chat_postMessage(  # type: ignore
                             channel=dm_channel,
                             type="ephemeral",
-                            username="Fraud Department",
+                            username="Fraud Squad",
                             icon_emoji=":ban:",
                             text="*No luck for you, there was an issue processing your file*",
                         )

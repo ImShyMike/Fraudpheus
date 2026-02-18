@@ -366,7 +366,7 @@ def handle_bulkresolve_command(message: dict[str, Any], client: WebClient) -> No
                                 ],
                             },
                         ],
-                        username="Fraud Department",
+                        username="Fraud Squad",
                         icon_emoji=":ban:",
                     )
 

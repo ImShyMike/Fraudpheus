@@ -180,7 +180,7 @@ def send_dm_to_user(
         response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
             channel=dm_channel,
             text=reply_text,
-            username="Fraud Department",
+            username="Fraud Squad",
             icon_emoji=":ban:",
         )
 

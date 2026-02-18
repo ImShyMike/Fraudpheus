@@ -26,7 +26,7 @@ class TimedAirtableMessage(AirtableMessage):
 
 
 class MessageMapping(TypedDict):
-    """Mapping between fraud department message and user/thread info"""
+    """Mapping between fraud squad message and user/thread info"""
 
     user_id: str
     dm_ts: str
