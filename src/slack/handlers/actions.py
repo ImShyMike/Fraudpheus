@@ -30,7 +30,7 @@ def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> 
             client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=messages_ts,
-                text="This thread has been closed!",
+                text=f"This thread has been closed by <@{body['user']['id']}>.",
                 icon_emoji=":information_source:",
                 username="Thread Info",
             )
@@ -74,7 +74,7 @@ def handle_mark_resolved(ack: Any, body: dict[str, Any], client: WebClient) -> N
             client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=messages_ts,
-                text="This thread has been marked as resolved.",
+                text=f"This thread has been marked as resolved by <@{body['user']['id']}>.",
                 icon_emoji=":information_source:",
                 username="Thread Info",
             )
