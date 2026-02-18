@@ -72,6 +72,7 @@ REMINDER_INTERVAL_BASE_HOURS = 6
 
 # === Other configuration ===
 
+HACKATIME_ADMIN_KEY = os.getenv("HACKATIME_ADMIN_KEY", None)
 TRUST_EMOJI = {0: "🔵", 1: "🔴", 2: "🟢", 3: "🟡", 4: "⚠️"}
 
 TRUST_LABELS = {
