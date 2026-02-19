@@ -1,23 +1,26 @@
-version: '3.8'
-
 services:
   slack-bot:
+    container_name: fraudpheus-slack-bot
     build: .
     restart: unless-stopped
     environment:
+      - PYTHONUNBUFFERED=1
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
       - CHANNEL_ID=${CHANNEL_ID}
-      - SLACK_USER_TOKEN=${SLACK_USER_TOKEN}
+      - SLACK_USER_TOKEN=${SLACK_USER_TOKEN:-}
       - AIRTABLE_API_KEY=${AIRTABLE_API_KEY}
       - AIRTABLE_BASE_ID=${AIRTABLE_BASE_ID}
       - FRAUDPHEUS_WEBHOOK_SECRET=${FRAUDPHEUS_WEBHOOK_SECRET}
       - FRAUDPHEUS_API_KEY=${FRAUDPHEUS_API_KEY}
       - WEBSOCKET_MODE=${WEBSOCKET_MODE}
-      - PORT=${PORT}
-      - WEBHOOK_URLS=${WEBHOOK_URLS}
+      - PORT=${PORT:-8000}
+      - IS_DEVELOPMENT=${IS_DEVELOPMENT}
+      - WEBHOOK_URLS=${WEBHOOK_URLS:-}
+      - HACKATIME_ADMIN_KEY=${HACKATIME_ADMIN_KEY}
 
   api:
+    container_name: fraudpheus-api
     build: .
     restart: unless-stopped
     # in theory this should override the CMD line
@@ -25,14 +28,17 @@ services:
     ports:
       - '8000:8000'
     environment:
+      - PYTHONUNBUFFERED=1
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
       - CHANNEL_ID=${CHANNEL_ID}
-      - SLACK_USER_TOKEN=${SLACK_USER_TOKEN}
+      - SLACK_USER_TOKEN=${SLACK_USER_TOKEN:-}
       - AIRTABLE_API_KEY=${AIRTABLE_API_KEY}
       - AIRTABLE_BASE_ID=${AIRTABLE_BASE_ID}
       - FRAUDPHEUS_WEBHOOK_SECRET=${FRAUDPHEUS_WEBHOOK_SECRET}
       - FRAUDPHEUS_API_KEY=${FRAUDPHEUS_API_KEY}
       - WEBSOCKET_MODE=${WEBSOCKET_MODE}
-      - PORT=${PORT}
-      - WEBHOOK_URLS=${WEBHOOK_URLS}
+      - PORT=${PORT:-8000}
+      - IS_DEVELOPMENT=${IS_DEVELOPMENT}
+      - WEBHOOK_URLS=${WEBHOOK_URLS:-}
+      - HACKATIME_ADMIN_KEY=${HACKATIME_ADMIN_KEY}

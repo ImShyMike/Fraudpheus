@@ -6,8 +6,13 @@ from typing import Any, Optional
 
 from slack_sdk.errors import SlackApiError
 
-from src.config import CHANNEL, TRUST_EMOJI, TRUST_LABELS, slack_client
-from src.services.trust import get_user_trust_level
+from src.config import CHANNEL, JOE_URL, TRUST_EMOJI, TRUST_LABELS, slack_client
+from src.services.hackatime import (
+    format_coding_time,
+    format_creation_date,
+    get_trust_level,
+    get_user_data,
+)
 from src.services.user_cache import get_user_name
 from src.services.webhook_dispatcher import dispatch_event
 from src.slack.helpers import (
@@ -67,9 +72,6 @@ def post_message_to_channel(
     if not message_text or message_text.strip() == "":
         return None
 
-    if message_text == "[Shared a file]":
-        return True
-
     if thread_manager.has_active_thread(user_id):
         thread_info = thread_manager.get_active_thread(user_id)
         if not thread_info:
@@ -91,6 +93,17 @@ def post_message_to_channel(
 
             if files:
                 download_reupload_files(files, CHANNEL, thread_ts)
+
+            file_name = files[0].get("name", "unknown") if files else "unknown"
+            if file_name == "history.zip":
+                print(f"Received history.zip file from user {user_id}")
+                slack_client.chat_postMessage(  # type: ignore
+                    channel=CHANNEL,
+                    thread_ts=thread_ts,
+                    text=f"<{JOE_URL}/history|Open in Joe>",
+                    username="History Folder",
+                    icon_emoji=":file_folder:",
+                )
 
             thread_manager.update_thread_activity(user_id)
             if thread_manager.is_resolved(user_id):
@@ -151,17 +164,24 @@ def create_new_thread(
             user_id, CHANNEL, response["ts"], response["ts"]
         )
         if success:
-            trust_level = get_user_trust_level(user_id)
+            user_data = get_user_data(user_id)
+            trust_level = get_trust_level(user_data)
             trust_emoji = TRUST_EMOJI.get(trust_level, TRUST_EMOJI[4])
             trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
             past_threads = get_past_threads_info(user_id)
+
+            emails = ", ".join(user_data["email_addresses"]) if user_data else "N/A"
+            creation_date = format_creation_date(user_data)
+            coding_time_str = format_coding_time(user_data)
 
             new_msg: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=response["ts"],
                 text=(
-                    f"*User Info:*\n{trust_emoji} Trust Level: {trust_label}\n\n"
-                    f"{past_threads}"
+                    f"*User Info:*\n • Trust Level: {trust_label} {trust_emoji}"
+                    f"\n • Emails: {emails}\n • Created: {creation_date}"
+                    f"\n • Total Coding Time: {coding_time_str}\n\n{past_threads}\n\n"
+                    f"<{JOE_URL}/profile/{user_id}|Open in Joe>"
                 ),
                 username="Thread Info",
                 icon_emoji=":information_source:",
@@ -170,6 +190,19 @@ def create_new_thread(
 
             if files:
                 download_reupload_files(files, CHANNEL, new_msg_ts)
+
+            dispatch_event(
+                "thread.created",
+                {
+                    "thread_ts": response["ts"],
+                    "user_slack_id": user_id,
+                    "started_at": datetime.fromtimestamp(float(response["ts"]))
+                    .astimezone(timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                    "initial_message": "User initiated case",
+                },
+            )
 
             dispatch_event(
                 "message.user.new",

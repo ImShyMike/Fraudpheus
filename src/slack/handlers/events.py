@@ -53,7 +53,10 @@ def handle_all_messages(
     logger: logging.Logger,  # pylint: disable=unused-argument
 ) -> None:
     """Handle all messages related to the bot"""
-    user_id: str = message["user"]
+    user_id: str = message.get("user", "")
+    if not user_id:
+        print("Warning: Received message event without user ID")
+        return
     message_text: str = message["text"]
     channel_type: str = message.get("channel_type", "")
     message_ts: str = message["ts"]
@@ -120,6 +123,8 @@ def handle_channel_reply(message: dict[str, Any], client: WebClient) -> None:
             break
 
     if target_user_id:
+        if not reply_text.strip():
+            return
         dm_ts = send_dm_to_user(target_user_id, reply_text, files)
 
         if dm_ts and thread_ts:
@@ -178,10 +183,14 @@ def handle_file_shared(
         file_id: str = event["file_id"]
         user_id: str = event["user_id"]
         print(f"File shared event - File ID: {file_id}, User ID: {user_id}")
+
+        bot_info: dict[str, Any] = client.auth_test()  # type: ignore
+        if user_id == bot_info.get("user_id"):
+            return
+
         file_info: dict[str, Any] = client.files_info(file=file_id)  # type: ignore
         file_data: dict[str, Any] = file_info["file"]
 
-        groups: list[str] = file_data.get("groups", [])
         ims: list[str] = file_data.get("ims", [])
 
         if (
@@ -195,6 +204,20 @@ def handle_file_shared(
                 success = post_message_to_channel(
                     user_id, message_text, user_info, [file_data]
                 )
+
+                if success:
+                    shares = file_data.get("shares", {})
+                    for share_type in ("public", "private"):
+                        for ch_id, share_list in shares.get(share_type, {}).items():
+                            if ch_id in ims and share_list:
+                                try:
+                                    client.reactions_add(  # type: ignore
+                                        channel=ch_id,
+                                        timestamp=share_list[0]["ts"],
+                                        name="white_check_mark",
+                                    )
+                                except SlackApiError:
+                                    pass
 
                 if not success:
                     try:
@@ -212,18 +235,6 @@ def handle_file_shared(
 
                     except SlackApiError as err:
                         print(f"Failed to send error msg: {err}")
-
-        elif (
-            groups
-            and not file_data.get("initial_comment")
-            and file_data.get("comments_count") == 0
-        ):
-            shares: dict[str, Any] = file_data.get("shares", {})
-            thread_ts: str = shares["private"][CHANNEL][0]["thread_ts"]
-
-            for user, thread_info in thread_manager.active_cache.items():
-                if thread_info["thread_ts"] == thread_ts:
-                    send_dm_to_user(user, "[Shared file]", [file_data])
 
     except SlackApiError as err:
         logger.error(f"Error handling file_shared event: {err}")

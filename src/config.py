@@ -16,6 +16,7 @@ REQUIRED_ENV = (
     "AIRTABLE_API_KEY",
     "AIRTABLE_BASE_ID",
     "FRAUDPHEUS_WEBHOOK_SECRET",
+    "JOE_URL",
 )
 
 env: dict[str, str] = {name: os.getenv(name, "") for name in REQUIRED_ENV}
@@ -25,6 +26,7 @@ SLACK_APP_TOKEN = env["SLACK_APP_TOKEN"]
 CHANNEL_ID = env["CHANNEL_ID"]
 AIRTABLE_API_KEY = env["AIRTABLE_API_KEY"]
 AIRTABLE_BASE_ID = env["AIRTABLE_BASE_ID"]
+JOE_URL = env["JOE_URL"]
 
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
 SLACK_USER_TOKEN = os.getenv("SLACK_USER_TOKEN", "")

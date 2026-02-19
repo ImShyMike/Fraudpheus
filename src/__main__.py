@@ -1,5 +1,9 @@
 """Main entry point"""
 
+import signal
+import sys
+from typing import Any
+
 import uvicorn
 from fastapi.responses import JSONResponse, Response
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -39,6 +43,19 @@ def create_app() -> Starlette:
 if __name__ == "__main__":
     start_reminder_service(thread_manager)
     print("Bot running!")
+
+    socket_handler = None  # pylint: disable=invalid-name
+
+    def shutdown_handler(signum: Any, _frame: Any):
+        """Handle shutdown signals gracefully"""
+        print(f"Received signal {signum}, shutting down...")
+        if socket_handler:
+            socket_handler.close()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
+
     try:
         if WEBSOCKET_MODE:
             print("Running in development mode, using socket mode with app token")

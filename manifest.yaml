@@ -39,8 +39,6 @@ settings:
       - message.channels
       - message.groups
       - message.im
-      - reaction_added
-      - reaction_removed
   interactivity:
     is_enabled: true
   org_deploy_enabled: false
