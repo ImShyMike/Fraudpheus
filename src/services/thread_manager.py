@@ -1,0 +1,467 @@
+"""Thread manager with Airtable integration"""
+
+from datetime import datetime, timedelta
+from typing import Any, NotRequired, Optional, TypedDict
+
+from pyairtable import Base
+from slack_sdk import WebClient
+
+from src.services.daily_reminders import clear_reminder_state
+
+
+class AirtableMessage(TypedDict):
+    """Represents a message thread in Slack and its mapping to Airtable"""
+
+    thread_ts: Optional[str]
+    channel: Optional[str]
+    message_ts: Optional[str]
+    record_id: str
+    creator_id: NotRequired[Optional[str]]
+
+
+class TimedAirtableMessage(AirtableMessage):
+    """Airtable message with last activity timestamp"""
+
+    last_activity: datetime
+
+
+class MessageMapping(TypedDict):
+    """Mapping between fraud squad message and user/thread info"""
+
+    user_id: str
+    dm_ts: str
+    message_text: str
+    thread_ts: str
+
+
+class InactiveThreadInfo(TypedDict):
+    """Information about an inactive thread"""
+
+    user_id: str
+    thread_info: TimedAirtableMessage
+    hours_inactive: float
+
+
+class ThreadManager:
+    """Manages threads with the help of Airtable"""
+
+    def __init__(self, airtable_base: Base, slack_client: Optional[WebClient] = None):
+        self._active_cache: dict[str, TimedAirtableMessage] = {}
+        self._completed_cache: dict[str, list[AirtableMessage]] = {}
+        self._message_mappings: dict[str, MessageMapping] = {}
+        self._thread_ts_to_user_id: dict[str, str] = {}
+        self._resolved_users: set[str] = set()
+        self.active_threads_table = airtable_base.table("Active Threads")
+        self.completed_threads_table = airtable_base.table("Completed Threads")
+        self.slack_client = slack_client
+
+        self._load_from_airtable()
+
+    def _load_from_airtable(self):
+        """Load existing threads from Airtable"""
+        try:
+            # Load active threads
+            active_records = self.active_threads_table.all()
+            for record in active_records:
+                fields = record["fields"]
+                user_id = fields.get("user_id")
+                if user_id:
+                    self._active_cache[user_id] = {
+                        "thread_ts": fields.get("thread_ts", None),
+                        "channel": fields.get("channel", None),
+                        "message_ts": fields.get("message_ts", None),
+                        "record_id": record["id"],
+                        "last_activity": datetime.now(),
+                        "creator_id": fields.get("creator_id", None),
+                    }
+                    if fields.get("resolved"):
+                        self._resolved_users.add(user_id)
+                    if fields.get("thread_ts"):
+                        self._thread_ts_to_user_id[str(fields.get("thread_ts"))] = (
+                            user_id
+                        )
+
+            # Load completed threads
+            completed_records = self.completed_threads_table.all()
+            for record in completed_records:
+                fields = record["fields"]
+                user_id = fields.get("user_id")
+                if user_id:
+                    if user_id not in self._completed_cache:
+                        self._completed_cache[user_id] = []
+                    self._completed_cache[user_id].append(
+                        {
+                            "thread_ts": fields.get("thread_ts"),
+                            "channel": fields.get("channel"),
+                            "message_ts": fields.get("message_ts"),
+                            "record_id": record["id"],
+                        }
+                    )
+                    if fields.get("thread_ts"):
+                        self._thread_ts_to_user_id[str(fields.get("thread_ts"))] = (
+                            user_id
+                        )
+            completed_threads_count = sum(
+                len(threads) for threads in self._completed_cache.values()
+            )
+            print(
+                f"Loaded {len(self._active_cache)} active and "
+                f"{completed_threads_count} completed threads from db"
+            )
+
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error loading threads from Airtable: {err}")
+
+    def update_creator_id(self, user_id: str, creator_id: Optional[str]) -> bool:
+        """Update creator ID for a thread, if it exists in cache and Airtable"""
+        if user_id not in self._active_cache:
+            return False
+
+        try:
+            record_id = self._active_cache[user_id]["record_id"]
+            self.active_threads_table.update(record_id, {"creator_id": creator_id})
+            self._active_cache[user_id]["creator_id"] = creator_id
+            print(f"Updated creator ID for user {user_id} to {creator_id}")
+            return True
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error updating creator ID in Airtable: {err}")
+            return False
+
+    def _check_airtable_for_user(self, user_id: str) -> Optional[TimedAirtableMessage]:
+        try:
+            # Use Airtable's formula syntax for an exact match
+            formula = f"{{user_id}} = '{user_id}'"
+            records = self.active_threads_table.all(formula=formula, max_records=1)
+
+            if not records:
+                return None
+
+            record = records[0]
+            fields = record["fields"]
+            thread_data: TimedAirtableMessage = {
+                "thread_ts": fields.get("thread_ts"),
+                "channel": fields.get("channel"),
+                "message_ts": fields.get("message_ts"),
+                "record_id": record["id"],
+                "last_activity": datetime.now(),
+                "creator_id": fields.get("creator_id", None),
+            }
+
+            self._active_cache[user_id] = thread_data
+            if fields.get("resolved"):
+                self._resolved_users.add(user_id)
+            if thread_data.get("thread_ts"):
+                self._thread_ts_to_user_id[str(thread_data["thread_ts"])] = user_id
+
+            print(
+                f"Cache miss for {user_id}. Fetched and cached active thread from Airtable."
+            )
+            return thread_data
+
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error checking Airtable for user {user_id}: {err}")
+            return None
+
+    def get_active_thread(self, user_id: str) -> Optional[TimedAirtableMessage]:
+        """Get active thread for a user, checking Airtable on cache miss"""
+        thread = self._active_cache.get(user_id)
+        if thread:
+            return thread
+
+        return self._check_airtable_for_user(user_id)
+
+    def has_active_thread(self, user_id: str) -> bool:
+        """Check if user has an active thread, using cache and Airtable as fallback"""
+        if user_id in self._active_cache:
+            return True
+
+        return self._check_airtable_for_user(user_id) is not None
+
+    def create_active_thread(
+        self,
+        user_id: str,
+        channel: str,
+        thread_ts: str,
+        message_ts: str,
+        creator_id: Optional[str] = None,
+    ) -> bool:
+        """Create new active thread for user, return True if successful, False otherwise"""
+        try:
+            airtable_fields: dict[str, Any] = {
+                "user_id": user_id,
+                "thread_ts": thread_ts,
+                "channel": channel,
+                "message_ts": message_ts,
+            }
+            if creator_id is not None:
+                airtable_fields["creator_id"] = creator_id
+
+            record = self.active_threads_table.create(airtable_fields)
+
+            self._active_cache[user_id] = {
+                "thread_ts": thread_ts,
+                "channel": channel,
+                "message_ts": message_ts,
+                "record_id": record["id"],
+                "last_activity": datetime.now(),
+                "creator_id": creator_id,
+            }
+            self._thread_ts_to_user_id[thread_ts] = user_id
+
+            if user_id not in self._completed_cache:
+                self._completed_cache[user_id] = []
+
+            print(f"Created active thread for user {user_id}")
+            return True
+
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error creating active thread in db: {err}")
+            return False
+
+    def update_thread_activity(self, user_id: str):
+        """Updated last activity ts for a thread, if cached"""
+        if user_id not in self._active_cache:
+            return
+
+        current_time = datetime.now()
+        self._active_cache[user_id]["last_activity"] = current_time
+
+        try:
+            record_id = self._active_cache[user_id]["record_id"]
+            self.active_threads_table.update(
+                record_id, {"funny_field": current_time.strftime("%m/%d/%Y, %H:%M:%S")}
+            )
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error updating thread activity ts: {err}")
+
+    def complete_thread(self, user_id: str) -> bool:
+        """Mark active thread as completed"""
+        if user_id not in self._active_cache:
+            return False
+
+        try:
+            active_thread = self._active_cache[user_id]
+
+            # Create the record for completed thread, delete the active one
+            completed_fields: dict[str, Any] = {
+                "user_id": user_id,
+                "thread_ts": active_thread["thread_ts"],
+                "channel": active_thread["channel"],
+                "message_ts": active_thread["message_ts"],
+            }
+            creator_id = active_thread.get("creator_id")
+            if creator_id:
+                completed_fields["creator_id"] = creator_id
+
+            completed_record = self.completed_threads_table.create(completed_fields)
+            self.active_threads_table.delete(active_thread["record_id"])
+
+            # Update cache
+            if user_id not in self._completed_cache:
+                self._completed_cache[user_id] = []
+            self._completed_cache[user_id].append(
+                {
+                    "thread_ts": active_thread["thread_ts"],
+                    "channel": active_thread["channel"],
+                    "message_ts": active_thread["message_ts"],
+                    "record_id": completed_record["id"],
+                }
+            )
+            if active_thread.get("thread_ts"):
+                self._thread_ts_to_user_id[str(active_thread["thread_ts"])] = user_id
+            del self._active_cache[user_id]
+            self._resolved_users.discard(user_id)
+            clear_reminder_state(user_id)
+
+            print(f"Completed thread for user {user_id}")
+            return True
+
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error completing thread: {err}")
+            return False
+
+    def resolve_thread(self, user_id: str) -> bool:
+        """Mark an active thread as resolved"""
+        if user_id not in self._active_cache:
+            return False
+        try:
+            record_id = self._active_cache[user_id]["record_id"]
+            self.active_threads_table.update(record_id, {"resolved": True})
+            self._resolved_users.add(user_id)
+            clear_reminder_state(user_id)
+            print(f"Resolved thread for user {user_id}")
+            return True
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error resolving thread: {err}")
+            return False
+
+    def unresolve_thread(self, user_id: str) -> bool:
+        """Unmark a thread as resolved"""
+        if user_id not in self._active_cache or user_id not in self._resolved_users:
+            return False
+        try:
+            record_id = self._active_cache[user_id]["record_id"]
+            self.active_threads_table.update(record_id, {"resolved": False})
+            self._resolved_users.discard(user_id)
+            print(f"Unresolved thread for user {user_id}")
+            return True
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error unresolving thread: {err}")
+            return False
+
+    def is_resolved(self, user_id: str) -> bool:
+        """Check if a thread is resolved"""
+        return user_id in self._resolved_users
+
+    def get_completed_threads(self, user_id: str) -> list[AirtableMessage]:
+        """Get completed threads of a user"""
+        return self._completed_cache.get(user_id, [])
+
+    def delete_thread(
+        self, user_id: str, message_ts: str
+    ) -> tuple[Optional[AirtableMessage], bool]:
+        """Delete thread, either active or completed - doesn't matter"""
+        try:
+            # Try to delete an active thread with this ts if it exists
+            if (
+                user_id in self._active_cache
+                and self._active_cache[user_id]["message_ts"] == message_ts
+            ):
+                record_id = self._active_cache[user_id]["record_id"]
+                deleted_thread = self._active_cache[user_id]
+
+                self.active_threads_table.delete(record_id)
+                del self._active_cache[user_id]
+                self._resolved_users.discard(user_id)
+                print(f"Deleted active thread for {user_id}")
+                return deleted_thread, True
+
+            # Now look for completed thread with this ts, delete it if possible
+            if user_id in self._completed_cache:
+                for i, thread in enumerate(self._completed_cache[user_id]):
+                    if thread["message_ts"] == message_ts:
+                        record_id = thread["record_id"]
+
+                        self.completed_threads_table.delete(record_id)
+                        removed_thread = self._completed_cache[user_id].pop(i)
+                        thread_ts = removed_thread.get("thread_ts")
+                        if thread_ts and thread_ts in self._thread_ts_to_user_id:
+                            del self._thread_ts_to_user_id[thread_ts]
+                        print(f"Deleted finished thread of {user_id}")
+                        return removed_thread, False
+
+            return None, False
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error deleting thread: {err}")
+            return None, False
+
+    @property
+    def active_cache(self):
+        """Get active cache"""
+        return self._active_cache
+
+    @property
+    def completed_cache(self):
+        """Get completed cache"""
+        return self._completed_cache
+
+    def store_message_mapping(
+        self,
+        fraud_dept_ts: str,
+        user_id: str,
+        dm_ts: str,
+        message_text: str,
+        thread_ts: str,
+    ):
+        """Store mapping between fraud dept message and user/thread info"""
+        self._message_mappings[fraud_dept_ts] = {
+            "user_id": user_id,
+            "dm_ts": dm_ts,
+            "message_text": message_text,
+            "thread_ts": thread_ts,
+        }
+
+    def get_message_mapping(self, fraud_dept_ts: str):
+        """Get message mapping by fraud dept timestamp"""
+        return self._message_mappings.get(fraud_dept_ts)
+
+    def remove_message_mapping(self, fraud_dept_ts: str):
+        """Remove message mapping"""
+        if fraud_dept_ts in self._message_mappings:
+            del self._message_mappings[fraud_dept_ts]
+
+    def get_inactive_threads(self, hours: float = 48):
+        """Get threads inactive for more than specified hours"""
+        cutoff_time = datetime.now() - timedelta(hours=hours)
+        inactive_threads: list[InactiveThreadInfo] = []
+
+        for user_id, thread_info in self._active_cache.items():
+            last_activity = thread_info.get("last_activity", datetime.now())
+            if last_activity < cutoff_time:
+                inactive_threads.append(
+                    {
+                        "user_id": user_id,
+                        "thread_info": thread_info,
+                        "hours_inactive": (
+                            datetime.now() - last_activity
+                        ).total_seconds()
+                        / 3600,
+                    }
+                )
+
+        return inactive_threads
+
+    def get_user_by_thread_ts(self, thread_ts: str):
+        """Get user ID by thread timestamp"""
+        return self._thread_ts_to_user_id.get(thread_ts)
+
+    def get_thread_conversation(self, user_id: str):
+        """Get full conversation for a thread"""
+        if not self.slack_client or user_id not in self._active_cache:
+            return None
+
+        thread_info = self._active_cache[user_id]
+        channel = thread_info.get("channel")
+        thread_ts = thread_info.get("thread_ts")
+        if not channel or not thread_ts:
+            return None
+
+        try:
+            # Get all messages in the thread
+            response = self.slack_client.conversations_replies(  # type: ignore
+                channel=channel, ts=thread_ts, inclusive=True
+            )
+
+            if not response.get("ok"):
+                return None
+
+            messages = response.get("messages", [])
+            conversation_text = ""
+
+            for msg in messages:
+                # Skip bot messages and system messages
+                if msg.get("bot_id") or msg.get("subtype"):
+                    continue
+
+                user_id_msg = msg.get("user", "")
+                text = msg.get("text", "")
+
+                if text:
+                    # Get username for better context
+                    try:
+                        user_info = self.slack_client.users_info(user=user_id_msg)  # type: ignore
+                        username = (
+                            user_info.get("user", {}).get("real_name")
+                            or user_info.get("user", {}).get("name")
+                            or user_id_msg
+                        )
+                    except Exception:  # pylint: disable=broad-except
+                        username = user_id_msg
+
+                    conversation_text += f"{username}: {text}\n"
+
+            return conversation_text.strip()
+
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Error getting thread conversation for {user_id}: {err}")
+            return None
