@@ -44,3 +44,4 @@ services:
       - WEBHOOK_URLS=${WEBHOOK_URLS:-}
       - HACKATIME_ADMIN_KEY=${HACKATIME_ADMIN_KEY}
       - JOE_URL=${JOE_URL}
+      - SENTRY_DSN=${SENTRY_DSN:-}

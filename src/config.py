@@ -2,12 +2,23 @@
 
 import os
 
+import sentry_sdk
 from dotenv import load_dotenv
 from pyairtable import Api
 from slack_bolt import App
 from slack_sdk import WebClient
 
 load_dotenv()
+
+# === Sentry configuration ===
+
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        send_default_pii=True,
+    )
 
 REQUIRED_ENV = (
     "SLACK_BOT_TOKEN",
