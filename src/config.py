@@ -81,7 +81,7 @@ FRAUDPHEUS_API_KEY = os.getenv("FRAUDPHEUS_API_KEY", None)
 # == Reminders configuration ===
 
 CHECK_INTERVAL_SECONDS = 60 * 60
-REMINDER_INTERVAL_BASE_HOURS = 6
+REMINDER_INTERVAL_BASE_HOURS = 24
 
 # === Other configuration ===
 
