@@ -20,7 +20,7 @@ click==8.3.1
     # via uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
     # via click
-fastapi==0.128.8
+fastapi==0.135.1
     # via fraudpheus
 h11==0.16.0
     # via
@@ -45,15 +45,15 @@ pydantic==2.12.5
     #   pyairtable
 pydantic-core==2.41.5
     # via pydantic
-python-dotenv==1.2.1
+python-dotenv==1.2.2
     # via fraudpheus
 requests==2.32.5
     # via pyairtable
-sentry-sdk==2.54.0
+sentry-sdk==2.55.0
     # via fraudpheus
 slack-bolt==1.27.0
     # via fraudpheus
-slack-sdk==3.40.0
+slack-sdk==3.41.0
     # via
     #   fraudpheus
     #   slack-bolt
@@ -77,5 +77,5 @@ urllib3==2.6.3
     #   pyairtable
     #   requests
     #   sentry-sdk
-uvicorn==0.40.0
+uvicorn==0.42.0
     # via fraudpheus
