@@ -5,6 +5,10 @@ priority=1
 [ft-voting]
 name="flavortown"
 info="Related to flavortown voting"
-user_autoresponse=":hii: Thank you for your message, we will unlock your votes in about 24-48hr please wait till then."
-triggers=["\\bflavo(u)?rtown\\b[\\s\\S]*\\bvoting\\b|\\bvoting\\b[\\s\\S]*\\bflavo(u)?rtown\\b"]
+user_autoresponse=":hii: Thank you for reaching out! Your votes will be unlocked within 24–48 hours. Please note that we are all teen volunteers balancing this alongside school, which may contribute to the wait time. We truly appreciate your patience and understanding!"
+triggers=[
+	"\\bflavo(u)?rtown\\b[\\s\\S]*\\bvoting\\b",
+	"\\bvoting\\b[\\s\\S]*\\bflavo(u)?rtown\\b",
+	"\\bvot(ing|es)\\b[\\s\\S]*\\blocked\\b"
+]
 priority=2
