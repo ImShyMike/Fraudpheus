@@ -224,20 +224,25 @@ def create_new_thread(
             top_tag = msg_tags[0] if msg_tags else None
 
             if top_tag and top_tag.get("user_autoresponse") and user_channel_id:
-                slack_client.chat_postMessage(  # type: ignore
-                    channel=user_channel_id,
-                    text=top_tag.get("user_autoresponse"),
-                    username="Fraud Squad",
-                    icon_emoji=":robot_face:",
-                )
+                try:
+                    slack_client.chat_postMessage(  # type: ignore
+                        channel=user_channel_id,
+                        text=top_tag.get("user_autoresponse"),
+                        username="Fraud Squad",
+                        icon_emoji=":robot_face:",
+                    )
 
-                slack_client.chat_postMessage(  # type: ignore
-                    channel=CHANNEL,
-                    thread_ts=response["ts"],
-                    text=top_tag.get("user_autoresponse"),
-                    username="Auto Response",
-                    icon_emoji=":robot_face:",
-                )
+                    slack_client.chat_postMessage(  # type: ignore
+                        channel=CHANNEL,
+                        thread_ts=response["ts"],
+                        text=top_tag.get("user_autoresponse"),
+                        username="Auto Response",
+                        icon_emoji=":robot_face:",
+                    )
+                except SlackApiError as auto_err:
+                    print(
+                        f"Failed to send auto-response for thread {response.get('ts')}: {auto_err}"
+                    )
 
             dispatch_event(
                 "thread.created",
