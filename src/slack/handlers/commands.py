@@ -11,20 +11,16 @@ from slack_sdk.errors import SlackApiError
 from src.config import (
     CHANNEL,
     IS_DEVELOPMENT,
-    JOE_URL,
-    TRUST_EMOJI,
-    TRUST_LABELS,
     slack_app,
     slack_client,
 )
 from src.services.backup import create_backup_export
-from src.services.hackatime import (
-    format_coding_time,
-    format_creation_date,
-    get_trust_level,
-    get_user_data,
+from src.services.threads import (
+    extract_user_id,
+    format_slack_timestamp,
+    get_author_name,
+    post_thread_info_message,
 )
-from src.services.threads import extract_user_id, get_author_name, get_past_threads_info
 from src.services.webhook_dispatcher import dispatch_event
 from src.slack.helpers import (
     get_standard_channel_msg,
@@ -33,6 +29,7 @@ from src.slack.helpers import (
     thread_manager,
 )
 from src.slack.macros import expand_macros
+from src.slack.tags import get_tags_for_text, get_tag_info
 
 FDCHAT_COMMAND = f"/fdchat{'_dev' if IS_DEVELOPMENT else ''}"
 
@@ -227,28 +224,11 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
             creator_id=requester_id,
         )
 
-        user_data = get_user_data(target_user_id)
-        trust_level = get_trust_level(user_data)
-        trust_emoji = TRUST_EMOJI.get(trust_level, TRUST_EMOJI[4])
-        trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
-        past_threads = get_past_threads_info(target_user_id)
+        msg_tags = get_tags_for_text(staff_message)
 
-        emails = ", ".join(user_data["email_addresses"]) if user_data else "N/A"
-        creation_date = format_creation_date(user_data)
-        coding_time_str = format_coding_time(user_data)
+        post_thread_info_message(response["ts"], target_user_id, msg_tags)
 
-        slack_client.chat_postMessage(  # type: ignore
-            channel=CHANNEL,
-            thread_ts=response["ts"],
-            text=(
-                f"*User Info:*\n • Trust Level: {trust_label} {trust_emoji}"
-                f"\n • Emails: {emails}\n • Created: {creation_date}"
-                f"\n • Total Coding Time: {coding_time_str}\n\n{past_threads}\n\n"
-                f"<{JOE_URL}/profile/{target_user_id}|Open in Joe>"
-            ),
-            username="Thread Info",
-            icon_emoji=":information_source:",
-        )
+        top_tag = get_tag_info(msg_tags[0]) if msg_tags else None
 
         thread_manager.store_message_mapping(
             response["ts"], target_user_id, dm_ts, original_sent_text, response["ts"]
@@ -258,10 +238,8 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
             {
                 "thread_ts": response["ts"],
                 "user_slack_id": target_user_id,
-                "started_at": datetime.fromtimestamp(float(response["ts"]))
-                .astimezone(timezone.utc)
-                .isoformat()
-                .replace("+00:00", "Z"),
+                "tag": top_tag,
+                "started_at": format_slack_timestamp(response["ts"]),
                 "initial_message": original_sent_text,
             },
         )
@@ -272,10 +250,7 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
                 "message": {
                     "id": response["ts"],
                     "content": original_sent_text,
-                    "timestamp": datetime.fromtimestamp(float(response["ts"]))
-                    .astimezone(timezone.utc)
-                    .isoformat()
-                    .replace("+00:00", "Z"),
+                    "timestamp": format_slack_timestamp(response["ts"]),
                     "is_from_user": False,
                     "author": {"name": get_author_name(requester_id)},
                 },

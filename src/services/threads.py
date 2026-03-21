@@ -21,6 +21,7 @@ from src.slack.helpers import (
     get_standard_channel_msg,
     thread_manager,
 )
+from src.slack.tags import Tag, get_tag_info, get_tags_for_text
 
 
 def extract_user_id(text: str) -> Optional[str]:
@@ -60,6 +61,50 @@ def get_past_threads_info(user_id: str) -> str:
         result += f"\n_...and {len(completed_threads) - 5} more_"
 
     return result
+
+
+def format_slack_timestamp(slack_ts: str) -> str:
+    """Convert Slack ts to UTC ISO string expected by webhook events"""
+    return (
+        datetime.fromtimestamp(float(slack_ts))
+        .astimezone(timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def build_user_info_message(user_id: str, tags: list[Tag]) -> str:
+    """Build thread context block with trust and account details"""
+    user_data = get_user_data(user_id)
+    trust_level = get_trust_level(user_data)
+    trust_emoji = TRUST_EMOJI.get(trust_level, TRUST_EMOJI[4])
+    trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
+    past_threads = get_past_threads_info(user_id)
+
+    tags_text = f"\n • Tags: {', '.join(tag['true_name'] for tag in tags)}" if tags else ""
+    emails = ", ".join(user_data["email_addresses"]) if user_data else "N/A"
+    creation_date = format_creation_date(user_data)
+    coding_time_str = format_coding_time(user_data)
+
+    return (
+        f"*User Info:*\n • Trust Level: {trust_label} {trust_emoji}"
+        f"\n • Emails: {emails}\n • Created: {creation_date}"
+        f"\n • Total Coding Time: {coding_time_str}{tags_text}"
+        f"\n\n{past_threads}\n\n"
+        f"<{JOE_URL}/profile/{user_id}|Open in Joe>"
+    )
+
+
+def post_thread_info_message(thread_ts: str, user_id: str, tags: list[Tag]) -> str:
+    """Post user info block in thread and return message timestamp"""
+    info_response: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
+        channel=CHANNEL,
+        thread_ts=thread_ts,
+        text=build_user_info_message(user_id, tags),
+        username="Thread Info",
+        icon_emoji=":information_source:",
+    )
+    return info_response["ts"]
 
 
 def post_message_to_channel(
@@ -164,42 +209,21 @@ def create_new_thread(
             user_id, CHANNEL, response["ts"], response["ts"]
         )
         if success:
-            user_data = get_user_data(user_id)
-            trust_level = get_trust_level(user_data)
-            trust_emoji = TRUST_EMOJI.get(trust_level, TRUST_EMOJI[4])
-            trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
-            past_threads = get_past_threads_info(user_id)
-
-            emails = ", ".join(user_data["email_addresses"]) if user_data else "N/A"
-            creation_date = format_creation_date(user_data)
-            coding_time_str = format_coding_time(user_data)
-
-            new_msg: dict[str, Any] = slack_client.chat_postMessage(  # type: ignore
-                channel=CHANNEL,
-                thread_ts=response["ts"],
-                text=(
-                    f"*User Info:*\n • Trust Level: {trust_label} {trust_emoji}"
-                    f"\n • Emails: {emails}\n • Created: {creation_date}"
-                    f"\n • Total Coding Time: {coding_time_str}\n\n{past_threads}\n\n"
-                    f"<{JOE_URL}/profile/{user_id}|Open in Joe>"
-                ),
-                username="Thread Info",
-                icon_emoji=":information_source:",
-            )
-            new_msg_ts: str = new_msg["ts"]
+            msg_tags = get_tags_for_text(message_text)
+            new_msg_ts = post_thread_info_message(response["ts"], user_id, msg_tags)
 
             if files:
                 download_reupload_files(files, CHANNEL, new_msg_ts)
+
+            top_tag = get_tag_info(msg_tags[0]) if msg_tags else None
 
             dispatch_event(
                 "thread.created",
                 {
                     "thread_ts": response["ts"],
                     "user_slack_id": user_id,
-                    "started_at": datetime.fromtimestamp(float(response["ts"]))
-                    .astimezone(timezone.utc)
-                    .isoformat()
-                    .replace("+00:00", "Z"),
+                    "tag": top_tag,
+                    "started_at": format_slack_timestamp(response["ts"]),
                     "initial_message": "User initiated case",
                 },
             )
@@ -211,10 +235,7 @@ def create_new_thread(
                     "message": {
                         "id": response["ts"],
                         "content": message_text,
-                        "timestamp": datetime.fromtimestamp(float(response["ts"]))
-                        .astimezone(timezone.utc)
-                        .isoformat()
-                        .replace("+00:00", "Z"),
+                        "timestamp": format_slack_timestamp(response["ts"]),
                         "is_from_user": True,
                         "author": {"name": user_info["display_name"]},
                     },

@@ -1,0 +1,9 @@
+[flavortown]
+triggers=["\\bflavo(u)?rtown\\b"]
+priority=1
+
+[ft-voting]
+name="flavortown"
+info="Related to flavortown voting"
+triggers=["\\bflavo(u)?rtown\\b[\\s\\S]*\\bvoting\\b|\\bvoting\\b[\\s\\S]*\\bflavo(u)?rtown\\b"]
+priority=2
