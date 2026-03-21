@@ -234,7 +234,7 @@ def create_new_thread(
                 slack_client.chat_postMessage(  # type: ignore
                     channel=CHANNEL,
                     thread_ts=response["ts"],
-                    text=top_tag.get('user_autoresponse'),
+                    text=top_tag.get("user_autoresponse"),
                     username="Auto Response",
                     icon_emoji=":robot_face:",
                 )
