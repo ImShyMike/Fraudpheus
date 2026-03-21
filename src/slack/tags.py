@@ -12,6 +12,7 @@ class Tag(TypedDict):
     true_name: str
     name: str
     info: Optional[str]
+    user_autoresponse: Optional[str]
     triggers: list[str]
     priority: int
 
@@ -54,8 +55,10 @@ def get_tags_for_text(text: str) -> list[Tag]:
     return matched_tags
 
 
-def get_tag_info(tag: Tag) -> TagInfo:
+def get_tag_info(tag: Optional[Tag]) -> Optional[TagInfo]:
     """Get tag info for a given tag"""
+    if not tag:
+        return None
     return {
         "name": tag["name"],
         "info": tag.get("info"),

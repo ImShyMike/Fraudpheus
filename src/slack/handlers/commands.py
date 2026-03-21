@@ -228,7 +228,7 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
 
         post_thread_info_message(response["ts"], target_user_id, msg_tags)
 
-        top_tag = get_tag_info(msg_tags[0]) if msg_tags else None
+        top_tag = msg_tags[0] if msg_tags else None
 
         thread_manager.store_message_mapping(
             response["ts"], target_user_id, dm_ts, original_sent_text, response["ts"]
@@ -238,7 +238,7 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
             {
                 "thread_ts": response["ts"],
                 "user_slack_id": target_user_id,
-                "tag": top_tag,
+                "tag": get_tag_info(top_tag),
                 "started_at": format_slack_timestamp(response["ts"]),
                 "initial_message": original_sent_text,
             },

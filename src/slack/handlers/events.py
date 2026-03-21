@@ -32,7 +32,9 @@ def handle_dms(
     if not user_info:
         say("Hiya! Couldn't process your message, try again another time")
         return
-    success = post_message_to_channel(user_id, message_text, user_info, files)
+    success = post_message_to_channel(
+        user_id, message_text, user_info, files, channel_id
+    )
     if not success:
         client.chat_postEphemeral(  # type: ignore
             channel=channel_id,

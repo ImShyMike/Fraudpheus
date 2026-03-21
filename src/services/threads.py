@@ -114,6 +114,7 @@ def post_message_to_channel(
     message_text: str,
     user_info: UserInfo,
     files: Optional[list[dict[str, Any]]] = None,
+    user_channel_id: Optional[str] = None,
 ) -> Optional[bool]:
     """Post user's message to the given channel, either as new message or new reply"""
     if not message_text or message_text.strip() == "":
@@ -188,7 +189,9 @@ def post_message_to_channel(
             print(f"Error writing to a thread: {err}")
             return False
     else:
-        return create_new_thread(user_id, message_text, user_info, files)
+        return create_new_thread(
+            user_id, message_text, user_info, files, user_channel_id
+        )
 
 
 def create_new_thread(
@@ -196,6 +199,7 @@ def create_new_thread(
     message_text: str,
     user_info: UserInfo,
     files: Optional[list[dict[str, Any]]] = None,
+    user_channel_id: Optional[str] = None,
 ) -> bool:
     """Create new thread in the channel"""
     try:
@@ -217,14 +221,30 @@ def create_new_thread(
             if files:
                 download_reupload_files(files, CHANNEL, new_msg_ts)
 
-            top_tag = get_tag_info(msg_tags[0]) if msg_tags else None
+            top_tag = msg_tags[0] if msg_tags else None
+
+            if top_tag and top_tag.get("user_autoresponse") and user_channel_id:
+                slack_client.chat_postMessage(  # type: ignore
+                    channel=user_channel_id,
+                    text=top_tag.get("user_autoresponse"),
+                    username="Fraud Squad",
+                    icon_emoji=":robot_face:",
+                )
+
+                slack_client.chat_postMessage(  # type: ignore
+                    channel=CHANNEL,
+                    thread_ts=response["ts"],
+                    text=top_tag.get('user_autoresponse'),
+                    username="Auto Response",
+                    icon_emoji=":robot_face:",
+                )
 
             dispatch_event(
                 "thread.created",
                 {
                     "thread_ts": response["ts"],
                     "user_slack_id": user_id,
-                    "tag": top_tag,
+                    "tag": get_tag_info(top_tag),
                     "started_at": format_slack_timestamp(response["ts"]),
                     "initial_message": "User initiated case",
                 },
