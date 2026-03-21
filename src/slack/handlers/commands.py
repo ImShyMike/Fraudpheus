@@ -29,7 +29,7 @@ from src.slack.helpers import (
     thread_manager,
 )
 from src.slack.macros import expand_macros
-from src.slack.tags import get_tags_for_text, get_tag_info
+from src.slack.tags import get_tag_info, get_tags_for_text
 
 FDCHAT_COMMAND = f"/fdchat{'_dev' if IS_DEVELOPMENT else ''}"
 

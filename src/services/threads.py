@@ -81,7 +81,9 @@ def build_user_info_message(user_id: str, tags: list[Tag]) -> str:
     trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
     past_threads = get_past_threads_info(user_id)
 
-    tags_text = f"\n • Tags: {', '.join(tag['true_name'] for tag in tags)}" if tags else ""
+    tags_text = (
+        f"\n • Tags: {', '.join(tag['true_name'] for tag in tags)}" if tags else ""
+    )
     emails = ", ".join(user_data["email_addresses"]) if user_data else "N/A"
     creation_date = format_creation_date(user_data)
     coding_time_str = format_coding_time(user_data)
