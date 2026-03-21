@@ -41,13 +41,26 @@ with _TAGS_FILE.open("rb") as f:
     ]
 
 
+COMPILED_TAG_TRIGGERS: dict[str, list[re.Pattern[str]]] = {}
+for _tag in TAGS:
+    compiled_triggers: list[re.Pattern[str]] = []
+    for trigger in _tag["triggers"]:
+        try:
+            compiled_triggers.append(re.compile(trigger, re.IGNORECASE))
+        except re.error as exc:
+            raise ValueError(
+                f"Invalid regex trigger {trigger!r} for tag {_tag['true_name']}"
+            ) from exc
+    COMPILED_TAG_TRIGGERS[_tag["true_name"]] = compiled_triggers
+
+
 def get_tags_for_text(text: str) -> list[Tag]:
-    """Get a list of tags that match the given text"""
+    """Get a list of unique tag names that match the given text"""
     text = text.lower()
     matched_tags: list[Tag] = []
     for tag in TAGS:
-        for trigger in tag["triggers"]:
-            if re.search(trigger, text, re.IGNORECASE):
+        for pattern in COMPILED_TAG_TRIGGERS.get(tag["true_name"], ()):
+            if pattern.search(text):
                 matched_tags.append(tag)
                 break
 
