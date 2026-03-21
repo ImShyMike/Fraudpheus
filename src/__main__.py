@@ -58,11 +58,11 @@ if __name__ == "__main__":
 
     try:
         if WEBSOCKET_MODE:
-            print("Running in development mode, using socket mode with app token")
+            print("Running in websocket mode")
             socket_handler = SocketModeHandler(slack_app, SLACK_APP_TOKEN)
             socket_handler.start()
         else:
-            print("Running in production mode, using HTTP mode")
+            print("Running in HTTP mode")
             starlette_app = create_app()
             uvicorn.run(starlette_app, host="0.0.0.0", port=PORT)
     finally:

@@ -1,8 +1,11 @@
 """Macros for common messages"""
 
 import tomllib
+from pathlib import Path
 
-with open("macros.toml", "rb") as f:
+_MACROS_FILE = Path(__file__).resolve().parents[2] / "macros.toml"
+
+with _MACROS_FILE.open("rb") as f:
     raw_macros = tomllib.load(f)
     MACROS = {f"${k}": v.strip() for k, v in raw_macros.items()}
 
