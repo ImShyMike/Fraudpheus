@@ -42,7 +42,7 @@ with _TAGS_FILE.open("rb") as f:
 
 
 def get_tags_for_text(text: str) -> list[Tag]:
-    """Get a list of unique tag names that match the given text"""
+    """Get a list of tags that match the given text"""
     text = text.lower()
     matched_tags: list[Tag] = []
     for tag in TAGS:
