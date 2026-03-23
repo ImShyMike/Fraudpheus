@@ -1,6 +1,8 @@
 """Slack event handlers"""
 
 import logging
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -14,8 +16,33 @@ from src.slack.handlers.commands import (
     handle_backup_command,
     handle_bulkresolve_command,
 )
-from src.slack.helpers import get_user_info, send_dm_to_user, thread_manager
+from src.slack.helpers import (
+    download_reupload_files,
+    get_user_info,
+    send_dm_to_user,
+    thread_manager,
+)
 from src.slack.macros import MACROS, expand_macros
+
+_user_file_locks: dict[str, threading.Lock] = {}
+_user_file_locks_lock = threading.Lock()
+_handled_file_ids: set[str] = set()
+
+
+def _get_user_lock(user_id: str) -> threading.Lock:
+    """Get or create a per-user lock for file_shared handling"""
+    with _user_file_locks_lock:
+        if user_id not in _user_file_locks:
+            _user_file_locks[user_id] = threading.Lock()
+        return _user_file_locks[user_id]
+
+
+def _mark_files_handled(files: list[dict[str, Any]]) -> None:
+    """Mark file IDs as already handled by the message event"""
+    for f in files:
+        file_id = f.get("id")
+        if file_id:
+            _handled_file_ids.add(file_id)
 
 
 def handle_dms(
@@ -28,23 +55,30 @@ def handle_dms(
     message_ts: str,
 ) -> None:
     """Receive and react to messages sent to the bot"""
-    user_info = get_user_info(user_id)
-    if not user_info:
-        say("Hiya! Couldn't process your message, try again another time")
-        return
-    success = post_message_to_channel(
-        user_id, message_text, user_info, files, channel_id
-    )
-    if not success:
-        client.chat_postEphemeral(  # type: ignore
-            channel=channel_id,
-            user=user_id,
-            text="An error occurred while processing your message. Please try again later.",
+    user_lock = _get_user_lock(user_id)
+    with user_lock:
+        if files:
+            _mark_files_handled(files)
+        user_info = get_user_info(user_id)
+        if not user_info:
+            say("Hiya! Couldn't process your message, try again another time")
+            return
+        success = post_message_to_channel(
+            user_id, message_text, user_info, files, channel_id
         )
-    else:
-        client.reactions_add(  # type: ignore
-            channel=channel_id, timestamp=message_ts, name="white_check_mark"
-        )
+        if not success:
+            client.chat_postEphemeral(  # type: ignore
+                channel=channel_id,
+                user=user_id,
+                text="An error occurred while processing your message. Please try again later.",
+            )
+        else:
+            try:
+                client.reactions_add(  # type: ignore
+                    channel=channel_id, timestamp=message_ts, name="white_check_mark"
+                )
+            except SlackApiError:
+                pass
 
 
 @slack_app.message("")  # type: ignore
@@ -186,6 +220,15 @@ def handle_file_shared(
         user_id: str = event["user_id"]
         print(f"File shared event - File ID: {file_id}, User ID: {user_id}")
 
+        time.sleep(1.5)
+
+        if file_id in _handled_file_ids:
+            _handled_file_ids.discard(file_id)
+            print(
+                f"Skipping file_shared for {file_id} - already handled by message event"
+            )
+            return
+
         bot_info: dict[str, Any] = client.auth_test()  # type: ignore
         if user_id == bot_info.get("user_id"):
             return
@@ -200,12 +243,24 @@ def handle_file_shared(
             and not file_data.get("initial_comment")
             and file_data.get("comments_count") == 0
         ):
-            user_info = get_user_info(user_id)
-            message_text = "[Shared a file]"
-            if user_info:
-                success = post_message_to_channel(
-                    user_id, message_text, user_info, [file_data]
-                )
+            user_lock = _get_user_lock(user_id)
+            with user_lock:
+                if thread_manager.has_active_thread(user_id):
+                    thread_info = thread_manager.get_active_thread(user_id)
+                    if thread_info:
+                        download_reupload_files(
+                            [file_data], CHANNEL, thread_info["thread_ts"]
+                        )
+                        thread_manager.update_thread_activity(user_id)
+                    return
+
+                user_info = get_user_info(user_id)
+                message_text = "[Shared a file]"
+                success = False
+                if user_info:
+                    success = post_message_to_channel(
+                        user_id, message_text, user_info, [file_data]
+                    )
 
                 if success:
                     shares = file_data.get("shares", {})

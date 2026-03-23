@@ -29,7 +29,7 @@ def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> 
                     channel=CHANNEL, timestamp=messages_ts, name="white_check_mark"
                 )
             except SlackApiError:
-                pass # don't fail if already reacted
+                pass  # don't fail if already reacted
             client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=messages_ts,
