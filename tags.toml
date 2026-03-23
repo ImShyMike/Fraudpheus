@@ -1,5 +1,5 @@
 [flavortown]
-triggers=["\\bflavo(u)?rtown\\b"]
+triggers=["\\bflavo(u)?rtown\\b", "\\bcookie(s)?\\b"]
 priority=1
 
 [ft-voting]

@@ -8,6 +8,8 @@ anyio==4.12.1
     # via
     #   httpx
     #   starlette
+cachetools==7.0.5
+    # via fraudpheus
 certifi==2026.1.4
     # via
     #   httpcore

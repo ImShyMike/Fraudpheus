@@ -24,9 +24,12 @@ def handle_mark_completed(ack: Any, body: dict[str, Any], client: WebClient) -> 
         success = thread_manager.complete_thread(user_id)
         if success:
             print(f"Marked thread for user {user_id} as completed")
-            client.reactions_add(  # type: ignore
-                channel=CHANNEL, timestamp=messages_ts, name="white_check_mark"
-            )
+            try:
+                client.reactions_add(  # type: ignore
+                    channel=CHANNEL, timestamp=messages_ts, name="white_check_mark"
+                )
+            except SlackApiError:
+                pass  # don't fail if already reacted
             client.chat_postMessage(  # type: ignore
                 channel=CHANNEL,
                 thread_ts=messages_ts,

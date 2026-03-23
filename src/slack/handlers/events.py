@@ -1,9 +1,12 @@
 """Slack event handlers"""
 
 import logging
+import threading
+import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
+from cachetools import LRUCache, TTLCache
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -14,8 +17,43 @@ from src.slack.handlers.commands import (
     handle_backup_command,
     handle_bulkresolve_command,
 )
-from src.slack.helpers import get_user_info, send_dm_to_user, thread_manager
+from src.slack.helpers import (
+    download_reupload_files,
+    get_user_info,
+    send_dm_to_user,
+    thread_manager,
+)
 from src.slack.macros import MACROS, expand_macros
+
+_user_file_locks: LRUCache[str, threading.Lock] = LRUCache(maxsize=4096)
+_user_file_locks_lock = threading.Lock()
+_handled_file_ids: TTLCache[str, bool] = TTLCache(maxsize=4096, ttl=30)
+_handled_file_ids_lock = threading.Lock()
+
+
+def _get_user_lock(user_id: str) -> threading.Lock:
+    """Get or create a per-user lock for file_shared handling (LRU, bounded)"""
+    with _user_file_locks_lock:
+        lock = _user_file_locks.get(user_id)
+        if lock is None:
+            lock = threading.Lock()
+            _user_file_locks[user_id] = lock
+        return lock
+
+
+def _mark_files_handled(files: list[dict[str, Any]]) -> None:
+    """Mark file IDs as already handled by the message event"""
+    with _handled_file_ids_lock:
+        for f in files:
+            file_id = f.get("id")
+            if file_id:
+                _handled_file_ids[file_id] = True
+
+
+def _is_file_handled(file_id: str) -> bool:
+    """Check if a file ID was recently handled, and remove it if so"""
+    with _handled_file_ids_lock:
+        return _handled_file_ids.pop(file_id, None) is not None
 
 
 def handle_dms(
@@ -28,23 +66,30 @@ def handle_dms(
     message_ts: str,
 ) -> None:
     """Receive and react to messages sent to the bot"""
-    user_info = get_user_info(user_id)
-    if not user_info:
-        say("Hiya! Couldn't process your message, try again another time")
-        return
-    success = post_message_to_channel(
-        user_id, message_text, user_info, files, channel_id
-    )
-    if not success:
-        client.chat_postEphemeral(  # type: ignore
-            channel=channel_id,
-            user=user_id,
-            text="An error occurred while processing your message. Please try again later.",
+    user_lock = _get_user_lock(user_id)
+    with user_lock:
+        if files:
+            _mark_files_handled(files)
+        user_info = get_user_info(user_id)
+        if not user_info:
+            say("Hiya! Couldn't process your message, try again another time")
+            return
+        success = post_message_to_channel(
+            user_id, message_text, user_info, files, channel_id
         )
-    else:
-        client.reactions_add(  # type: ignore
-            channel=channel_id, timestamp=message_ts, name="white_check_mark"
-        )
+        if not success:
+            client.chat_postEphemeral(  # type: ignore
+                channel=channel_id,
+                user=user_id,
+                text="An error occurred while processing your message. Please try again later.",
+            )
+        else:
+            try:
+                client.reactions_add(  # type: ignore
+                    channel=channel_id, timestamp=message_ts, name="white_check_mark"
+                )
+            except SlackApiError:
+                pass
 
 
 @slack_app.message("")  # type: ignore
@@ -190,8 +235,22 @@ def handle_file_shared(
         if user_id == bot_info.get("user_id"):
             return
 
-        file_info: dict[str, Any] = client.files_info(file=file_id)  # type: ignore
-        file_data: dict[str, Any] = file_info["file"]
+        file_data: Optional[dict[str, Any]] = None
+        for attempt in range(5):
+            try:
+                file_info: dict[str, Any] = client.files_info(file=file_id)  # type: ignore
+                raw_file_data = file_info.get("file")
+                if isinstance(raw_file_data, dict):
+                    file_data = cast(dict[str, Any], raw_file_data)
+                    if file_data.get("ims") is not None:
+                        break
+            except SlackApiError:
+                pass
+            time.sleep(0.3 * (attempt + 1))
+
+        if file_data is None:
+            print(f"Failed to fetch file info for {file_id} after retries")
+            return
 
         ims: list[str] = file_data.get("ims", [])
 
@@ -200,12 +259,29 @@ def handle_file_shared(
             and not file_data.get("initial_comment")
             and file_data.get("comments_count") == 0
         ):
-            user_info = get_user_info(user_id)
-            message_text = "[Shared a file]"
-            if user_info:
-                success = post_message_to_channel(
-                    user_id, message_text, user_info, [file_data]
-                )
+            user_lock = _get_user_lock(user_id)
+            with user_lock:
+                if _is_file_handled(file_id):
+                    print(
+                        f"Skipping file_shared for {file_id} - already handled by message event"
+                    )
+                    return
+                if thread_manager.has_active_thread(user_id):
+                    thread_info = thread_manager.get_active_thread(user_id)
+                    if thread_info:
+                        download_reupload_files(
+                            [file_data], CHANNEL, thread_info["thread_ts"]
+                        )
+                        thread_manager.update_thread_activity(user_id)
+                    return
+
+                user_info = get_user_info(user_id)
+                message_text = "[Shared a file]"
+                success = False
+                if user_info:
+                    success = post_message_to_channel(
+                        user_id, message_text, user_info, [file_data]
+                    )
 
                 if success:
                     shares = file_data.get("shares", {})
