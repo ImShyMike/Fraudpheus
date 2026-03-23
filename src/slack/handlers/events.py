@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from cachetools import LRUCache, TTLCache
 from slack_sdk import WebClient
@@ -231,20 +231,26 @@ def handle_file_shared(
         user_id: str = event["user_id"]
         print(f"File shared event - File ID: {file_id}, User ID: {user_id}")
 
-        time.sleep(1.5)
-
-        if _is_file_handled(file_id):
-            print(
-                f"Skipping file_shared for {file_id} - already handled by message event"
-            )
-            return
-
         bot_info: dict[str, Any] = client.auth_test()  # type: ignore
         if user_id == bot_info.get("user_id"):
             return
 
-        file_info: dict[str, Any] = client.files_info(file=file_id)  # type: ignore
-        file_data: dict[str, Any] = file_info["file"]
+        file_data: Optional[dict[str, Any]] = None
+        for attempt in range(5):
+            try:
+                file_info: dict[str, Any] = client.files_info(file=file_id)  # type: ignore
+                raw_file_data = file_info.get("file")
+                if isinstance(raw_file_data, dict):
+                    file_data = cast(dict[str, Any], raw_file_data)
+                    if file_data.get("ims") is not None:
+                        break
+            except SlackApiError:
+                pass
+            time.sleep(0.3 * (attempt + 1))
+
+        if file_data is None:
+            print(f"Failed to fetch file info for {file_id} after retries")
+            return
 
         ims: list[str] = file_data.get("ims", [])
 
@@ -255,6 +261,11 @@ def handle_file_shared(
         ):
             user_lock = _get_user_lock(user_id)
             with user_lock:
+                if _is_file_handled(file_id):
+                    print(
+                        f"Skipping file_shared for {file_id} - already handled by message event"
+                    )
+                    return
                 if thread_manager.has_active_thread(user_id):
                     thread_info = thread_manager.get_active_thread(user_id)
                     if thread_info:
