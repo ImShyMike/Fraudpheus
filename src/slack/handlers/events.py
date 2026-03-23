@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from cachetools import LRUCache, TTLCache
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -24,25 +25,35 @@ from src.slack.helpers import (
 )
 from src.slack.macros import MACROS, expand_macros
 
-_user_file_locks: dict[str, threading.Lock] = {}
+_user_file_locks: LRUCache[str, threading.Lock] = LRUCache(maxsize=4096)
 _user_file_locks_lock = threading.Lock()
-_handled_file_ids: set[str] = set()
+_handled_file_ids: TTLCache[str, bool] = TTLCache(maxsize=4096, ttl=30)
+_handled_file_ids_lock = threading.Lock()
 
 
 def _get_user_lock(user_id: str) -> threading.Lock:
-    """Get or create a per-user lock for file_shared handling"""
+    """Get or create a per-user lock for file_shared handling (LRU, bounded)"""
     with _user_file_locks_lock:
-        if user_id not in _user_file_locks:
-            _user_file_locks[user_id] = threading.Lock()
-        return _user_file_locks[user_id]
+        lock = _user_file_locks.get(user_id)
+        if lock is None:
+            lock = threading.Lock()
+            _user_file_locks[user_id] = lock
+        return lock
 
 
 def _mark_files_handled(files: list[dict[str, Any]]) -> None:
     """Mark file IDs as already handled by the message event"""
-    for f in files:
-        file_id = f.get("id")
-        if file_id:
-            _handled_file_ids.add(file_id)
+    with _handled_file_ids_lock:
+        for f in files:
+            file_id = f.get("id")
+            if file_id:
+                _handled_file_ids[file_id] = True
+
+
+def _is_file_handled(file_id: str) -> bool:
+    """Check if a file ID was recently handled, and remove it if so"""
+    with _handled_file_ids_lock:
+        return _handled_file_ids.pop(file_id, None) is not None
 
 
 def handle_dms(
@@ -222,8 +233,7 @@ def handle_file_shared(
 
         time.sleep(1.5)
 
-        if file_id in _handled_file_ids:
-            _handled_file_ids.discard(file_id)
+        if _is_file_handled(file_id):
             print(
                 f"Skipping file_shared for {file_id} - already handled by message event"
             )
