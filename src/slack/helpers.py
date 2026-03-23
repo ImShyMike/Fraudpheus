@@ -27,9 +27,9 @@ def get_user_info(user_id: str) -> Optional[UserInfo]:
         response: dict[str, Any] = slack_client.users_info(user=user_id)  # type: ignore
         user = response["user"]
         return {
-            "name": user.get("real_name") or user.get("name", "Unknown User"),
+            "name": user.get("real_name") or user.get("name", "unknown_user"),
             "avatar": user["profile"].get("image_72", ""),
-            "display_name": user["profile"].get("display_name", user["name"]),
+            "display_name": user["profile"].get("display_name", user.get("name", "Unknown User")),
         }
 
     except SlackApiError as err:
