@@ -62,6 +62,15 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
     requester_id: str = command.get("user_id", "")
 
     parts = command_text.split(" ", 1)
+    if len(parts) < 2:
+        respond(
+            {
+                "response_type": "ephemeral",
+                "text": "Usage: /fdchat @user your message' or '/fdchat U000000 your message'",
+            }
+        )
+        return
+
     user_id = parts[0]
     staff_message = expand_macros(parts[1])
 
