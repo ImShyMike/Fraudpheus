@@ -110,25 +110,41 @@ def handle_all_messages(
     files: list[dict[str, Any]] = message.get("files", [])
     channel_id: Optional[str] = message.get("channel")
 
-    print(f"Message received - Channel: {channel_id}, Type: {channel_type}")
+    print(
+        f"Message received - Channel: {channel_id}, Type: {channel_type}, User: {user_id}"
+    )
 
     if message.get("bot_id"):
+        print(f"Ignoring bot message from {user_id}")
         return
 
     if channel_type == "im":
         if channel_id:
+            print(f"Handling DM from {user_id}")
             handle_dms(
                 user_id, message_text, files, say, client, channel_id, message_ts
             )
         else:
             print(f"Warning: Received IM message without channel_id for user {user_id}")
     elif channel_id == CHANNEL:
+        print(
+            f"Message in CHANNEL: has_thread_ts={'thread_ts' in message}, starts_with_!={message_text and message_text.startswith('!')}"
+        )
         if message_text and message_text.strip() == "!backup":
+            print("Handling !backup command")
             handle_backup_command(message, client)
         elif message_text and message_text.strip() == "!bulkresolve":
+            print("Handling !bulkresolve command")
             handle_bulkresolve_command(message, client)
         elif "thread_ts" in message:
+            print(f"Handling channel reply in thread {message.get('thread_ts')}")
             handle_channel_reply(message, client)
+        else:
+            print(
+                f"Message in CHANNEL not handled: text_preview={message_text[:50] if message_text else 'empty'}"
+            )
+    else:
+        print(f"Message in non-handled channel {channel_id}")
 
 
 def handle_channel_reply(message: dict[str, Any], client: WebClient) -> None:

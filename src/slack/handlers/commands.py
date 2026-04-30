@@ -10,6 +10,7 @@ from slack_sdk.errors import SlackApiError
 
 from src.config import (
     CHANNEL,
+    FDCHAT_SELF_ONLY,
     IS_DEVELOPMENT,
     slack_app,
     slack_client,
@@ -80,6 +81,15 @@ def handle_fdchat_cmd(ack: Any, respond: Any, command: dict[str, Any]) -> None:
             {
                 "response_type": "ephemeral",
                 "text": "Provide a valid user ID: U000000 or a mention: @name",
+            }
+        )
+        return
+
+    if FDCHAT_SELF_ONLY and target_user_id != requester_id:
+        respond(
+            {
+                "response_type": "ephemeral",
+                "text": "You can only use /fdchat on yourself",
             }
         )
         return

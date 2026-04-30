@@ -99,6 +99,7 @@ TRUST_LABELS = {
 PORT = int(os.getenv("APP_PORT", "3000"))
 WEBSOCKET_MODE = os.getenv("WEBSOCKET_MODE", "true").lower() == "true"
 IS_DEVELOPMENT = os.getenv("ENVIRONMENT") != "production"
+FDCHAT_SELF_ONLY = os.getenv("FDCHAT_SELF_ONLY", "false").lower() == "true"
 
 if not WEBSOCKET_MODE and not SLACK_SIGNING_SECRET:
     raise ValueError("SLACK_SIGNING_SECRET is required when not using websocket mode")
