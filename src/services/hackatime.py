@@ -6,6 +6,8 @@ import httpx
 
 from src.config import HACKATIME_ADMIN_KEY
 
+HACKATIME_ENABLED = bool(HACKATIME_ADMIN_KEY)
+
 TRUST_LEVEL_MAP = {
     "blue": 0,
     "red": 1,
@@ -73,7 +75,7 @@ def format_coding_time(user_data: UserInfoDict | None) -> str:
 
 def get_hackatime_id_from_slack_id(slack_id: str) -> str | None:
     """Get hackatime user ID from Slack ID"""
-    if not HACKATIME_ADMIN_KEY:
+    if not HACKATIME_ENABLED:
         return None
 
     try:
@@ -100,7 +102,7 @@ def get_hackatime_id_from_slack_id(slack_id: str) -> str | None:
 
 def get_user_data(slack_id: str) -> UserInfoDict | None:
     """Get user's data from Hackatime"""
-    if not HACKATIME_ADMIN_KEY:
+    if not HACKATIME_ENABLED:
         return None
 
     user_id = get_hackatime_id_from_slack_id(slack_id)

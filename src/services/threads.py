@@ -8,6 +8,7 @@ from slack_sdk.errors import SlackApiError
 
 from src.config import CHANNEL, JOE_URL, TRUST_EMOJI, TRUST_LABELS, slack_client
 from src.services.hackatime import (
+    HACKATIME_ENABLED,
     format_coding_time,
     format_creation_date,
     get_trust_level,
@@ -75,11 +76,20 @@ def format_slack_timestamp(slack_ts: str) -> str:
 
 def build_user_info_message(user_id: str, tags: list[Tag]) -> str:
     """Build thread context block with trust and account details"""
+    past_threads = get_past_threads_info(user_id)
+
+    if not HACKATIME_ENABLED:
+        return (
+            "*User Info:*\n"
+            " • Hackatime features are disabled\n"
+            f"\n{past_threads}\n\n"
+            f"<{JOE_URL}/profile/{user_id}|Open in Joe>"
+        )
+
     user_data = get_user_data(user_id)
     trust_level = get_trust_level(user_data)
     trust_emoji = TRUST_EMOJI.get(trust_level, TRUST_EMOJI[4])
     trust_label = TRUST_LABELS.get(trust_level, TRUST_LABELS[4])
-    past_threads = get_past_threads_info(user_id)
 
     tags_text = (
         f"\n • Tags: {', '.join(tag['true_name'] for tag in tags)}" if tags else ""
